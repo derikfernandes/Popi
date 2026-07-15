@@ -20,6 +20,10 @@ export function canManageSecretarias(profile: UserProfile | null | undefined): b
   return isAdminProfile(profile);
 }
 
+export function canManagePrompts(profile: UserProfile | null | undefined): boolean {
+  return isAdminProfile(profile);
+}
+
 export function canAccessSecretaria(
   profile: UserProfile | null | undefined,
   secretariaId: string

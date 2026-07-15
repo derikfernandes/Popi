@@ -120,6 +120,12 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Prompts globais de IA (admin edita; usuários ativos apenas leem)
+    match /settings/prompts {
+      allow read: if isActiveUser();
+      allow create, update, delete: if isAdmin();
+    }
+
     // 1. User profiles
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
@@ -144,9 +150,10 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
 
-      // Prompts aninhados
+      // Prompts legados por usuário (somente leitura para migração)
       match /prompts/{promptId} {
-        allow read, write: if isOwner(userId) && isValidId(promptId);
+        allow read: if isOwner(userId) && isValidId(promptId);
+        allow write: if false;
       }
     }
 

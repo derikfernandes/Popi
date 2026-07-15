@@ -11,7 +11,6 @@ import PopiForm from "./components/PopiForm";
 import PopiWorkspace from "./components/PopiWorkspace";
 import PromptManager from "./components/PromptManager";
 import LoginPage from "./components/LoginPage";
-import { DEFAULT_PROMPTS } from "./constants/defaultPrompts";
 import { 
   Building2, Landmark, ListTodo, Plus, FileText, Settings, UserCheck, 
   FileEdit, CheckCircle, Terminal,
@@ -26,7 +25,8 @@ import {
   savePOPIDocumentToFirestore, loadPOPIDocumentFromFirestore,
   savePOPIClassificationToFirestore, loadPOPIClassificationFromFirestore,
   savePOPIVersionToFirestore, loadPOPIVersionsFromFirestore,
-  saveCustomPromptsToFirestore, loadCustomPromptsFromFirestore,
+  saveGlobalPromptsToFirestore, loadGlobalPromptsFromFirestore, loadLegacyUserPromptsFromFirestore,
+  buildDefaultPromptsMap,
   syncLocalToFirestore, ensureUserProfile
 } from "./firebaseSync";
 import { doc, getDocFromServer } from "firebase/firestore";
@@ -37,6 +37,7 @@ import {
   canApprovePopi,
   canManageSecretarias,
   canManageUsers,
+  canManagePrompts,
   canAccessSecretaria,
   filterPopisForUser,
   roleLabel,
@@ -117,17 +118,17 @@ export default function App() {
   // Current Selection
   const [selectedPopiId, setSelectedPopiId] = useState<string | null>(null);
 
-  // Customizable Prompts State
+  // Prompts globais definidos pelo admin (todos os usuários consomem)
   const [customPrompts, setCustomPrompts] = useState<Record<string, string>>(() => {
     const saved = localStorage.getItem("popi_custom_prompts");
-    if (saved) return JSON.parse(saved);
-    
-    // Otherwise populate with defaults from DEFAULT_PROMPTS
-    const initial: Record<string, string> = {};
-    DEFAULT_PROMPTS.forEach(p => {
-      initial[p.id] = p.defaultTemplate;
-    });
-    return initial;
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback abaixo
+      }
+    }
+    return buildDefaultPromptsMap();
   });
 
   // Authentication states
@@ -187,11 +188,16 @@ export default function App() {
             setPopis([]);
           }
 
-          const cloudPrompts = await loadCustomPromptsFromFirestore(user.uid);
+          const cloudPrompts = await loadGlobalPromptsFromFirestore();
           if (cloudPrompts) {
             setCustomPrompts(cloudPrompts);
+          } else if (profile.role === "admin") {
+            const legacyPrompts = await loadLegacyUserPromptsFromFirestore(user.uid);
+            const toSeed = legacyPrompts || customPrompts;
+            setCustomPrompts(toSeed);
+            await saveGlobalPromptsToFirestore(toSeed, user.uid);
           } else {
-            await saveCustomPromptsToFirestore(user.uid, customPrompts);
+            setCustomPrompts(buildDefaultPromptsMap());
           }
 
           const cloudSecs = await loadSecretariasFromFirestore();
@@ -269,12 +275,14 @@ export default function App() {
   }, []);
 
   // Synchronize localStorage as local fallback mechanism
+  // Admin persiste prompts globais; usuários comuns só leem na autenticação
   useEffect(() => {
+    if (!currentUser || !isAdminProfile(userProfile)) return;
     localStorage.setItem("popi_custom_prompts", JSON.stringify(customPrompts));
-    if (currentUser) {
-      saveCustomPromptsToFirestore(currentUser.uid, customPrompts).catch(err => console.error(err));
-    }
-  }, [customPrompts, currentUser]);
+    saveGlobalPromptsToFirestore(customPrompts, currentUser.uid).catch((err) =>
+      console.error(err)
+    );
+  }, [customPrompts, currentUser, userProfile]);
 
   useEffect(() => {
     localStorage.setItem("popi_secretarias", JSON.stringify(secretarias));
@@ -329,6 +337,47 @@ export default function App() {
     setSecretarias([...secretarias, sec]);
     if (currentUser) {
       await saveSecretariaToFirestore(sec);
+    }
+  };
+
+  const handleUpdateSecretaria = async (
+    id: string,
+    patch: Pick<Secretaria, "name" | "official_name" | "acronym" | "active">
+  ) => {
+    const existing = secretarias.find((s) => s.id === id);
+    if (!existing) return;
+
+    const updated: Secretaria = {
+      ...existing,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+
+    setSecretarias(secretarias.map((s) => (s.id === id ? updated : s)));
+
+    // Mantém o nome denormalizado nos POPIs alinhado com a secretaria
+    if (existing.name !== patch.name) {
+      const touched = popis
+        .filter((p) => p.secretaria_id === id)
+        .map((p) => ({
+          ...p,
+          secretaria_name: patch.name,
+          updated_at: new Date().toISOString(),
+        }));
+
+      if (touched.length > 0) {
+        const byId = new Map(touched.map((p) => [p.id, p]));
+        setPopis(popis.map((p) => byId.get(p.id) || p));
+        if (currentUser) {
+          for (const p of touched) {
+            await savePOPIToFirestore(p);
+          }
+        }
+      }
+    }
+
+    if (currentUser) {
+      await saveSecretariaToFirestore(updated);
     }
   };
 
@@ -967,7 +1016,7 @@ export default function App() {
     );
   }
 
-  if (currentView === "prompts") {
+  if (currentView === "prompts" && canManagePrompts(userProfile)) {
     return (
       <PromptManager
         customPrompts={customPrompts}
@@ -1118,21 +1167,23 @@ export default function App() {
                 </button>
               )}
 
-              <button
-                onClick={() => {
-                  setSelectedPopiId(null);
-                  setCurrentView("prompts");
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition ${
-                  currentView === "prompts"
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-                id="btn-nav-prompts"
-              >
-                <Terminal className="w-4 h-4" />
-                Instruções de IA
-              </button>
+              {canManagePrompts(userProfile) && (
+                <button
+                  onClick={() => {
+                    setSelectedPopiId(null);
+                    setCurrentView("prompts");
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition ${
+                    currentView === "prompts"
+                      ? "bg-blue-50 text-blue-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                  id="btn-nav-prompts"
+                >
+                  <Terminal className="w-4 h-4" />
+                  Instruções de IA
+                </button>
+              )}
             </div>
 
             <div className="space-y-2 pt-4 border-t border-slate-100">
@@ -1232,6 +1283,7 @@ export default function App() {
               <SecretariaAdmin
                 secretarias={secretarias}
                 onAddSecretaria={handleAddSecretaria}
+                onUpdateSecretaria={handleUpdateSecretaria}
               />
             )}
 
