@@ -1,0 +1,94 @@
+popi_numbering:
+  - name: gera primeiro numero por secretaria e ano
+    input:
+      secretaria: Saúde
+      year: 2026
+      last_number: 0
+    output:
+      report_number: Secretaria Saúde - Nº 001 - 2026
+      sequential_number: 1
+
+  - name: incrementa numero na mesma secretaria e ano
+    input:
+      secretaria: Saúde
+      year: 2026
+      last_number: 1
+    output:
+      report_number: Secretaria Saúde - Nº 002 - 2026
+      sequential_number: 2
+
+  - name: reinicia numero para outra secretaria
+    input:
+      secretaria: Governança
+      year: 2026
+      last_number: 0
+    output:
+      report_number: Secretaria Governança - Nº 001 - 2026
+      sequential_number: 1
+
+  - name: reinicia numero em novo ano
+    input:
+      secretaria: Saúde
+      year: 2027
+      last_number: 0
+    output:
+      report_number: Secretaria Saúde - Nº 001 - 2027
+      sequential_number: 1
+
+editing:
+  - name: usuario pode editar popi gerado
+    input:
+      status: gerado
+      action: edit_document
+    output:
+      allowed: true
+      version_required: true
+
+  - name: usuario pode editar popi em revisao
+    input:
+      status: em_revisao
+      action: edit_document
+    output:
+      allowed: true
+      version_required: true
+
+  - name: edicao de dados apos geracao exige escolha de regeracao
+    input:
+      has_generated_document: true
+      changed_field: step_by_step
+    output:
+      must_offer_regeneration_options: true
+      must_not_overwrite_manual_edits: true
+
+classification:
+  - name: categoria sugerida pode ser editada
+    input:
+      ai_suggested_category: Atendimento ao cidadão
+      user_selected_category: Processo de saúde
+    output:
+      final_category: Processo de saúde
+      version_required: true
+
+ai_generation:
+  - name: ia nao deve inventar norma ausente
+    input:
+      legal_basis: null
+    output:
+      legal_basis_text: não informado
+      must_not_create_fake_law: true
+
+  - name: documento deve registrar lacunas
+    input:
+      step_by_step: ""
+    output:
+      information_gaps_contains: passo a passo não informado
+
+versioning:
+  - name: restaurar versao cria nova versao
+    input:
+      action: restore_version
+      current_version: 5
+      restored_version: 2
+    output:
+      new_current_version: 6
+      previous_history_preserved: true

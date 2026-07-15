@@ -1,0 +1,6 @@
+{
+  "name": "POPI Generator",
+  "description": "Sistema de criação e gestão de Procedimento Operativo Padrão Inteligente (POPI) com auxílio de Inteligência Artificial.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

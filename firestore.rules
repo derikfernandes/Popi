@@ -1,0 +1,229 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- REUSABLE HARDENED GLOBAL HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function userDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function userProfile() {
+      return get(userDocPath()).data;
+    }
+
+    function hasProfile() {
+      return isSignedIn() && exists(userDocPath());
+    }
+
+    function isActiveUser() {
+      return hasProfile() && userProfile().active == true;
+    }
+
+    function isAdmin() {
+      return isActiveUser() && userProfile().role == 'admin';
+    }
+
+    function userSecretariaIds() {
+      return userProfile().secretaria_ids;
+    }
+
+    function canAccessSecretaria(secretariaId) {
+      return isAdmin() || (isActiveUser() && secretariaId in userSecretariaIds());
+    }
+
+    function canAccessPopiDoc(popiId) {
+      return isAdmin()
+        || (isActiveUser()
+            && exists(/databases/$(database)/documents/popis/$(popiId))
+            && get(/databases/$(database)/documents/popis/$(popiId)).data.secretaria_id in userSecretariaIds());
+    }
+
+    function isValidSecretaria(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.name is string && data.name.size() <= 256
+          && data.official_name is string && data.official_name.size() <= 256
+          && data.acronym is string && data.acronym.size() <= 32
+          && data.active is bool;
+    }
+
+    function isValidPOPI(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.title is string && data.title.size() <= 500
+          && data.status is string && data.status.size() <= 64
+          && data.secretaria_id is string && data.secretaria_id.size() <= 128
+          && data.report_number is string && data.report_number.size() <= 256
+          // SDK web grava números como float — use `number`, não `int`
+          && data.sequential_number is number
+          && data.year is number;
+    }
+
+    function isValidPOPIInput(data) {
+      return data.routine_name is string && data.routine_name.size() <= 500;
+    }
+
+    function isValidPOPIDocument(data) {
+      return data.final_markdown is string && data.final_markdown.size() <= 1048576; // Max 1MB markdown
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'display_name', 'role', 'secretaria_ids', 'active', 'created_at', 'updated_at'])
+          && data.uid is string
+          && data.email is string && data.email.size() <= 320
+          && data.display_name is string && data.display_name.size() <= 256
+          && (!('photo_url' in data) || data.photo_url == null || (data.photo_url is string && data.photo_url.size() <= 4096))
+          && data.role in ['admin', 'usuario']
+          && data.secretaria_ids is list
+          && data.secretaria_ids.size() <= 50
+          && data.active is bool
+          && data.created_at is string
+          && data.updated_at is string;
+    }
+
+    function isPendingSelfRegistration() {
+      return request.resource.data.role == 'usuario'
+          && request.resource.data.active == false
+          && request.resource.data.secretaria_ids.size() == 0
+          && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Primeiro admin OU recriação se o bootstrap aponta para este UID (doc user foi apagado)
+    function isBootstrapAdminRegistration() {
+      return request.resource.data.role == 'admin'
+          && request.resource.data.active == true
+          && request.resource.data.uid == request.auth.uid
+          && (
+            !exists(/databases/$(database)/documents/settings/bootstrap)
+            || get(/databases/$(database)/documents/settings/bootstrap).data.initialized_by == request.auth.uid
+          );
+    }
+
+    // --- ROUTE MATCHERS ---
+
+    // 0. Bootstrap (primeiro admin do sistema)
+    match /settings/bootstrap {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && !exists(/databases/$(database)/documents/settings/bootstrap)
+        && request.resource.data.initialized_by == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // 1. User profiles
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+
+      allow create: if isOwner(userId)
+        && isValidUserProfile(request.resource.data)
+        && (isPendingSelfRegistration() || isBootstrapAdminRegistration());
+
+      // Dono pode atualizar dados de exibição; admin gerencia role/secretaria/ativo
+      allow update: if isValidUserProfile(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.created_at == resource.data.created_at
+        && (
+          isAdmin()
+          || (
+            isOwner(userId)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.active == resource.data.active
+            && request.resource.data.secretaria_ids == resource.data.secretaria_ids
+          )
+        );
+
+      allow delete: if isAdmin();
+
+      // Prompts aninhados
+      match /prompts/{promptId} {
+        allow read, write: if isOwner(userId) && isValidId(promptId);
+      }
+    }
+
+    // 2. Municipal Secretariats
+    match /secretarias/{secretariaId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin()
+        && isValidId(secretariaId)
+        && isValidSecretaria(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 3. POPI Master Documents
+    match /popis/{popiId} {
+      allow read: if canAccessSecretaria(resource.data.secretaria_id);
+
+      allow create: if isActiveUser()
+        && isValidId(popiId)
+        && isValidPOPI(request.resource.data)
+        && request.resource.data.created_by == request.auth.uid
+        && canAccessSecretaria(request.resource.data.secretaria_id);
+
+      allow update: if isActiveUser()
+        && isValidPOPI(request.resource.data)
+        && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.sequential_number == resource.data.sequential_number
+        && request.resource.data.year == resource.data.year
+        && request.resource.data.id == resource.data.id
+        && canAccessSecretaria(resource.data.secretaria_id)
+        && canAccessSecretaria(request.resource.data.secretaria_id);
+
+      allow delete: if isAdmin()
+        || (isActiveUser()
+            && resource.data.created_by == request.auth.uid
+            && canAccessSecretaria(resource.data.secretaria_id));
+
+      match /inputs/{inputId} {
+        allow read: if canAccessPopiDoc(popiId);
+        allow create, update: if canAccessPopiDoc(popiId)
+          && isValidId(inputId)
+          && isValidPOPIInput(request.resource.data);
+        allow delete: if canAccessPopiDoc(popiId);
+      }
+
+      match /documents/{documentId} {
+        allow read: if canAccessPopiDoc(popiId);
+        allow create, update: if canAccessPopiDoc(popiId)
+          && isValidId(documentId)
+          && isValidPOPIDocument(request.resource.data);
+        allow delete: if canAccessPopiDoc(popiId);
+      }
+
+      match /classifications/{classificationId} {
+        allow read: if canAccessPopiDoc(popiId);
+        allow create, update: if canAccessPopiDoc(popiId) && isValidId(classificationId);
+        allow delete: if canAccessPopiDoc(popiId);
+      }
+
+      match /versions/{versionId} {
+        allow read: if canAccessPopiDoc(popiId);
+        allow create, update: if canAccessPopiDoc(popiId) && isValidId(versionId);
+        allow delete: if canAccessPopiDoc(popiId);
+      }
+    }
+
+    // Collection group queries (purge de órfãos) — só admin
+    match /{path=**}/inputs/{inputId} {
+      allow read, delete: if isAdmin();
+    }
+    match /{path=**}/documents/{documentId} {
+      allow read, delete: if isAdmin();
+    }
+    match /{path=**}/classifications/{classificationId} {
+      allow read, delete: if isAdmin();
+    }
+    match /{path=**}/versions/{versionId} {
+      allow read, delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "Secretaria": {
+      "title": "Secretaria",
+      "description": "Uma secretaria municipal cadastrada no sistema.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "official_name": { "type": "string" },
+        "acronym": { "type": "string" },
+        "active": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "acronym", "active"]
+    },
+    "POPI": {
+      "title": "POPI",
+      "description": "Documento de Procedimento Operacional Padrão municipal.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "report_number": { "type": "string" },
+        "sequential_number": { "type": "integer" },
+        "year": { "type": "integer" },
+        "secretaria_id": { "type": "string" },
+        "secretaria_name": { "type": "string" },
+        "title": { "type": "string" },
+        "department": { "type": "string" },
+        "division": { "type": "string" },
+        "status": { "type": "string", "enum": ["rascunho", "gerado", "em_edicao", "em_revisao", "aprovado", "arquivado"] },
+        "routine_category": { "type": "string" },
+        "improvement_categories": { "type": "array" },
+        "created_by": { "type": "string" },
+        "updated_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "approved_at": { "type": "string", "format": "date-time" },
+        "archived_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "report_number", "sequential_number", "year", "secretaria_id", "title", "status"]
+    },
+    "POPIInput": {
+      "title": "POPIInput",
+      "description": "Formulário de entrada respondido com as 16 perguntas do POPI.",
+      "type": "object",
+      "properties": {
+        "role_or_position": { "type": "string" },
+        "routine_name": { "type": "string" },
+        "routine_goal": { "type": "string" },
+        "routine_type": { "type": "string" },
+        "routine_type_detail": { "type": "string" },
+        "start_trigger": { "type": "string" },
+        "frequency": { "type": "string" },
+        "frequency_detail": { "type": "string" },
+        "participants": { "type": "array" },
+        "participants_free": { "type": "string" },
+        "norma_orientadora": { "type": "string" },
+        "passo_a_passo": { "type": "array" },
+        "passo_a_passo_free": { "type": "string" },
+        "sistemas_documentos_utilizados": { "type": "string" },
+        "informacoes_indispensaveis": { "type": "string" },
+        "tempo_medio": { "type": "string" },
+        "gargalos_dificuldades": { "type": "string" },
+        "melhorias_automacoes_sugeridas": { "type": "string" },
+        "metas_indicadores": { "type": "array" },
+        "metas_indicadores_free": { "type": "string" },
+        "additional_notes": { "type": "string" }
+      }
+    },
+    "POPIDocument": {
+      "title": "POPIDocument",
+      "description": "Arquivos de saída e diagnósticos resultantes da geração por IA.",
+      "type": "object",
+      "properties": {
+        "pop_markdown": { "type": "string" },
+        "intelligent_report_markdown": { "type": "string" },
+        "flowchart_mermaid": { "type": "string" },
+        "final_markdown": { "type": "string" },
+        "last_generated_at": { "type": "string", "format": "date-time" },
+        "last_manual_edit_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "POPIClassification": {
+      "title": "POPIClassification",
+      "description": "Resultados de classificação estatística pelo robô de IA.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "popi_id": { "type": "string" },
+        "routine_category": { "type": "string" },
+        "routine_category_justification": { "type": "string" },
+        "improvement_categories": { "type": "array" },
+        "confidence_level": { "type": "string", "enum": ["baixo", "médio", "alto"] },
+        "classification_gaps": { "type": "array" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "POPIVersion": {
+      "title": "POPIVersion",
+      "description": "Versões históricas geradas para modificações do POPI.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pop_id": { "type": "string" },
+        "version_number": { "type": "integer" },
+        "changed_by": { "type": "string" },
+        "change_type": { "type": "string" },
+        "status_at_change": { "type": "string" },
+        "changed_fields": { "type": "array" },
+        "note": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "CustomPrompts": {
+      "title": "CustomPrompts",
+      "description": "Prompts customizados de IA por tipo.",
+      "type": "object",
+      "properties": {
+        "generate-popi": { "type": "string" },
+        "qa-popi": { "type": "string" },
+        "classify-popi": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/secretarias/{secretariaId}": {
+      "schema": "Secretaria",
+      "description": "Cadastros de secretarias municipais no sistema."
+    },
+    "/popis/{popiId}": {
+      "schema": "POPI",
+      "description": "Cadastros dos POPIs e seu status principal."
+    },
+    "/popis/{popiId}/inputs/current": {
+      "schema": "POPIInput",
+      "description": "Os dados de entrada para o POPI."
+    },
+    "/popis/{popiId}/documents/current": {
+      "schema": "POPIDocument",
+      "description": "Os documentos gerados para o POPI."
+    },
+    "/popis/{popiId}/classifications/current": {
+      "schema": "POPIClassification",
+      "description": "Os dados de classificação por IA para o POPI."
+    },
+    "/popis/{popiId}/versions/{versionId}": {
+      "schema": "POPIVersion",
+      "description": "Versões históricas salvaguardadas da evolução do documento."
+    },
+    "/users/{userId}/prompts/current": {
+      "schema": "CustomPrompts",
+      "description": "Prompts customizados vinculados a cada usuário."
+    }
+  }
+}
