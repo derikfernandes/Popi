@@ -56,7 +56,12 @@ export interface POPIInput {
 export interface POPIDocument {
   pop_markdown: string;
   intelligent_report_markdown: string;
+  /** Fluxograma AS-IS (processo atual). */
   flowchart_mermaid: string;
+  /** Fluxograma TO-BE — alterações de fluxo de rotina. Vazio se não sugerido. */
+  flowchart_tobe_flow_mermaid?: string;
+  /** Fluxograma TO-BE — alterações sistêmicas. Vazio se não sugerido. */
+  flowchart_tobe_system_mermaid?: string;
   final_markdown: string;
   last_generated_at: string | null;
   last_manual_edit_at: string | null;

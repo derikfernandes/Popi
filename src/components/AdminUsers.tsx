@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Users, Save, RefreshCw, Shield, UserRound } from "lucide-react";
+import { Users, Save, RefreshCw, UserRound } from "lucide-react";
 import { Secretaria, UserProfile, UserRole } from "../types";
 import { loadAllUserProfiles, updateUserProfileAccess } from "../firebaseSync";
 import { roleLabel } from "../permissions";
+import SearchableSelect from "./SearchableSelect";
 
 interface AdminUsersProps {
   secretarias: Secretaria[];
@@ -46,7 +47,35 @@ export default function AdminUsers({ secretarias, currentUid }: AdminUsersProps)
   };
 
   useEffect(() => {
-    reload();
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await loadAllUserProfiles();
+        if (cancelled) return;
+        setUsers(list);
+        const next: Record<string, Draft> = {};
+        list.forEach((u) => {
+          next[u.uid] = {
+            role: u.role,
+            secretaria_ids: [...u.secretaria_ids],
+            active: u.active,
+          };
+        });
+        setDrafts(next);
+      } catch {
+        if (!cancelled) setError("Não foi possível carregar os usuários.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const updateDraft = (uid: string, patch: Partial<Draft>) => {
@@ -198,17 +227,16 @@ export default function AdminUsers({ secretarias, currentUid }: AdminUsersProps)
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Papel</label>
-                      <div className="relative">
-                        <select
-                          value={d.role}
-                          onChange={(e) => updateDraft(u.uid, { role: e.target.value as UserRole })}
-                          className="w-full appearance-none bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="usuario">{roleLabel("usuario")}</option>
-                          <option value="admin">{roleLabel("admin")}</option>
-                        </select>
-                        <Shield className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
+                      <SearchableSelect
+                        value={d.role}
+                        onChange={(val) => updateDraft(u.uid, { role: val as UserRole })}
+                        options={[
+                          { value: "usuario", label: roleLabel("usuario") },
+                          { value: "admin", label: roleLabel("admin") },
+                        ]}
+                        searchPlaceholder="Pesquisar papel..."
+                        triggerClassName="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-blue-500"
+                      />
                     </div>
 
                     <div>

@@ -210,6 +210,23 @@ export const IMPROVEMENT_CATEGORIES = [
   "Digitalização de processo",
 ];
 
+/** Máximo de tipos de melhoria selecionáveis na classificação manual. */
+export const MAX_IMPROVEMENT_CATEGORIES = 3;
+
+/** Texto de apoio exibido abaixo de cada tipo de melhoria na UI. */
+export const IMPROVEMENT_CATEGORY_HINTS: Record<string, string> = {
+  "Automação simples": "Tarefas repetitivas que podem ser automatizadas",
+  "Integração entre sistemas": "Eliminar redigitação entre ferramentas",
+  "Redução de retrabalho": "Menos etapas duplicadas e retrabalho",
+  "Melhoria de atendimento ao cidadão": "Mais rapidez e qualidade para o cidadão",
+  "Melhoria de controle interno": "Mais rastreio, conferência e governança",
+  "Melhoria de indicadores": "Métricas e acompanhamento de resultados",
+  "Padronização de procedimento": "Alinhar práticas e reduzir variações",
+  "Revisão normativa": "Adequar a normas, portarias e regulamentos",
+  "Uso potencial de IA": "Robôs, chatbots ou apoio inteligente",
+  "Digitalização de processo": "Menos papel e mais fluxo digital",
+};
+
 // Seed initial POPI list is useful to make the dashboard alive instantly
 export const INITIAL_POPIS: POPI[] = [
   {
@@ -373,6 +390,20 @@ Constatou-se uma grave ineficiência operacional decorrente de duas causas funda
     B --> C{Contato com Sucesso?}
     C -- Sim --> D[Gravado no CROSS]
     C -- Não --> E[Fila Alternativa]
+    D --> F[Fim]
+    E --> F`,
+    flowchart_tobe_flow_mermaid: `flowchart TD
+    A[Recepção CROSS] --> B[Triagem priorizada por data]
+    B --> C{Paciente confirmou?}
+    C -- Sim --> D[Gravado no CROSS]
+    C -- Não --> E[Remanejamento imediato da vaga]
+    D --> F[Fim]
+    E --> F`,
+    flowchart_tobe_system_mermaid: `flowchart TD
+    A[Integração SAMS-CROSS via API] --> B["Robô de confirmação (WhatsApp)"]
+    B --> C{Paciente confirmou?}
+    C -- Sim --> D[Gravação automática no CROSS]
+    C -- Não --> E[Fila alternativa automática]
     D --> F[Fim]
     E --> F`,
     final_markdown: `# POPI — Procedimento Operativo Padrão Inteligente

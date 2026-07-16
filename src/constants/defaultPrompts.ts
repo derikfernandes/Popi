@@ -2,7 +2,7 @@ export interface AIPromptTemplate {
   id: string;
   name: string;
   description: string;
-  category: "classification" | "generation" | "normalization" | "edition" | "qa";
+  category: "classification" | "generation" | "normalization" | "qa";
   placeholders: { name: string; description: string }[];
   defaultTemplate: string;
 }
@@ -163,9 +163,13 @@ REGRAS OBRIGATÓRIAS:
 2. Não invente informações fictícias. Se algo essencial faltar, registre como "não informado" ou lance como lacuna para posterior entrevista ou validação.
 3. Não cite nomes de pessoas físicas ou servidores específicos. Prefira cargos, funções ou secretarias.
 4. Escreva com linguagem profissional, objetiva e adequada a governos.
-5. Gere um fluxograma AS-IS em Mermaid de forma obrigatória usando flowchart TD.
-6. Se houver informações suficientes, gere também um novo fluxograma TO-BE baseado em melhorias em Mermaid usando flowchart TD.
-7. Respeite perfeitamente a estrutura obrigatória definida abaixo.
+5. Gere um fluxograma AS-IS em Mermaid de forma obrigatória usando flowchart TD (seção 7 da PARTE 1).
+6. Gere DOIS fluxogramas TO-BE em Mermaid usando flowchart TD, em seções separadas da PARTE 2:
+   a) FLUXOGRAMA TO-BE (ALTERAÇÕES DE FLUXO DE ROTINA): novo fluxo com melhorias de organização do trabalho, etapas, responsabilidades e sequência — sem depender de novos sistemas.
+   b) FLUXOGRAMA TO-BE (ALTERAÇÕES SISTÊMICAS): novo fluxo considerando automações, integrações entre sistemas, robôs ou tecnologia.
+   Se não houver informação suficiente para algum dos dois, escreva "Sem alterações sugeridas para este cenário." na seção correspondente e NÃO inclua o bloco mermaid dessa seção.
+7. Em nós Mermaid, se o texto contiver parênteses, vírgulas, dois-pontos ou aspas, SEMPRE use aspas duplas no rótulo. Exemplo correto: A["Vaga também no SIRESP (CROSS)"]. Exemplo incorreto: A[Vaga também no SIRESP (CROSS)].
+8. Respeite perfeitamente a estrutura obrigatória definida abaixo.
 
 ESTRUTURA OBRIGATÓRIA DA SAÍDA:
 
@@ -263,19 +267,54 @@ flowchart TD
 ## 8 — Novo fluxo sugerido
 [Visão TO-BE textual]
 
-## 9 — Novo fluxograma sugerido
+## 9 — Fluxograma TO-BE (Alterações de Fluxo de Rotina)
+[Breve explicação das mudanças de fluxo de trabalho, sem depender de novos sistemas]
 \`\`\`mermaid
 flowchart TD
-    [FLUXOGRAMA TO-BE OPCEONAL]
+    [FLUXOGRAMA TO-BE DE FLUXO DE ROTINA]
 \`\`\`
 
-## 10 — Anexos
+## 10 — Fluxograma TO-BE (Alterações Sistêmicas)
+[Breve explicação das mudanças com automações, integrações e tecnologia]
+\`\`\`mermaid
+flowchart TD
+    [FLUXOGRAMA TO-BE SISTÊMICO]
+\`\`\`
+
+## 11 — Anexos
 [Lista de anexos recomendados adicionais]
 
 ---
 
 # LACUNAS PARA VALIDAÇÃO COM A ÁREA
 [Lista de perguntas para preencher pontos em aberto]`
+  },
+  {
+    id: "import-pop",
+    name: "Importação de POP Existente",
+    description: "Lê um documento PDF ou Word já existente, preenche o questionário de mapeamento e aponta os assuntos que não foram encontrados no arquivo.",
+    category: "normalization",
+    placeholders: [
+      { name: "filename", description: "Nome do arquivo PDF ou Word importado." }
+    ],
+    defaultTemplate: `Você é um especialista em gestão pública e mapeamento de processos.
+Analise o POP existente anexado e extraia informações para preencher o questionário de mapeamento POPI.
+
+Arquivo: {{filename}}
+
+Regras obrigatórias:
+1. Use somente informações encontradas no documento. Não invente dados.
+2. Quando uma informação não existir, retorne string vazia ou lista vazia e registre uma lacuna em "gaps".
+3. "routine_type" deve ser exatamente uma destas opções: "Atende diretamente o cidadão", "Rotina interna" ou "Outro".
+4. Para frequência, preserve uma descrição objetiva encontrada no documento; se não houver, use string vazia.
+5. Estruture participantes, passo a passo e metas/indicadores nos arrays correspondentes.
+6. Não trate uma recomendação futura como etapa atual do processo.
+7. Em "meta", extraia título, departamento e divisão quando existirem.
+8. Crie uma lacuna para cada assunto relevante do questionário que não tenha sido localizado.
+9. Para participantes, passo a passo e metas/indicadores, registre uma única lacuna no campo principal; não duplique a lacuna no respectivo campo de texto livre.
+10. Em "gaps.field", use somente o nome direto do campo, sem prefixos como "inputs." ou "meta.".
+11. O nível de confiança deve ser "baixo", "médio" ou "alto".
+12. Retorne somente o JSON solicitado pelo schema.`
   },
   {
     id: "normalize-inputs",
@@ -298,41 +337,6 @@ Regras de normalização:
 4. Converta metas/indicadores (Q16) em uma lista estruturada: { "indicador": "", "meta": "", "forma_de_medicao": "", "fonte_dados": "", "periodicidade": "" }.
 
 Retorne estritamente um JSON no seguinte formato:`
-  },
-  {
-    id: "edit-popi",
-    name: "Edição Técnica Inteligente",
-    description: "Recebe comandos informais e contextualizados do usuário (ex: 'Adicione a necessidade do sistema SAMS no passo 3') e reescreve o documento Markdown geral e fluxograma sem perder dados de auditoria.",
-    category: "edition",
-    placeholders: [
-      { name: "documentMarkdown", description: "Código Markdown e fluxogramas atuais do documento sob edição." },
-      { name: "inputs", description: "Respostas originais do formulário de 16 perguntas para contexto." },
-      { name: "requestText", description: "Texto ou comando de direcionamento digitado pelo servidor municipal para aplicar a alteração." }
-    ],
-    defaultTemplate: `Você é um editor técnico de POPI — Procedimento Operativo Padrão Inteligente.
-Sua tarefa é aplicar uma edição solicitada pelo usuário em um POPI existente. Prescrevemos modificações cirúrgicas.
-
-Documento atual:
-{{documentMarkdown}}
-
-Dados de origem atuais:
-{{inputs}}
-
-Solicitação do usuário:
-{{requestText}}
-
-Regras:
-1. Aplique com cuidado a alteração solicitada no documento Markdown. Retorne o documento revisado completo.
-2. Não invente novas informações que não foram solicitadas.
-3. Não mude o número do relatório ou informações estruturais se não solicitado.
-
-Gere uma resposta em JSON com a estrutura:
-{
-  "alteracao_realizada": "breve resumo da alteração",
-  "partes_impactadas": ["POP", "fluxograma", etc.],
-  "regeracao_recomenda": "nenhuma" | "parcial" | "inteiro",
-  "documento_revisado": "Seu markdown revisado completo aqui"
-}`
   },
   {
     id: "qa-popi",

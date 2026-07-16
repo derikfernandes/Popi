@@ -8,3 +8,171 @@
 .animate-fade-in {
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ——— Documento Markdown (POP / Diagnóstico) ——— */
+.md-doc {
+  color: #334155;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  max-width: 52rem;
+}
+
+.md-h {
+  color: #0f172a;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.md-h1 {
+  font-size: 1.35rem;
+  margin: 1.75rem 0 0.85rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.md-h1:first-child {
+  margin-top: 0;
+}
+
+.md-h2 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.65rem;
+  color: #1e293b;
+  padding-left: 0.65rem;
+  border-left: 3px solid #3b82f6;
+}
+
+.md-h3 {
+  font-size: 0.98rem;
+  margin: 1.25rem 0 0.5rem;
+  color: #1e40af;
+}
+
+.md-h4 {
+  font-size: 0.9rem;
+  margin: 1rem 0 0.4rem;
+  color: #334155;
+  font-weight: 700;
+}
+
+.md-p {
+  margin: 0.55rem 0;
+  color: #475569;
+}
+
+.md-bold {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.md-italic {
+  font-style: italic;
+  color: #64748b;
+}
+
+.md-inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8em;
+  background: #f1f5f9;
+  color: #1e40af;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  border: 1px solid #e2e8f0;
+}
+
+.md-ul,
+.md-ol {
+  margin: 0.6rem 0 0.85rem;
+  padding-left: 1.35rem;
+}
+
+.md-ul {
+  list-style: disc;
+}
+
+.md-ol {
+  list-style: decimal;
+}
+
+.md-li {
+  margin: 0.3rem 0;
+  padding-left: 0.2rem;
+  color: #475569;
+}
+
+.md-li::marker {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.md-table-wrap {
+  margin: 1rem 0 1.25rem;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  min-width: 28rem;
+}
+
+.md-table th {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  color: #0f172a;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.md-table td {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #475569;
+  vertical-align: top;
+}
+
+.md-table tbody tr:nth-child(even) {
+  background: #fafbfc;
+}
+
+.md-table tbody tr:hover {
+  background: #eff6ff;
+}
+
+.md-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.md-pre {
+  margin: 0.85rem 0;
+  padding: 0.85rem 1rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.md-hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 1.5rem 0;
+}
+
+.md-quote {
+  margin: 0.85rem 0;
+  padding: 0.65rem 1rem;
+  border-left: 3px solid #93c5fd;
+  background: #f8fafc;
+  color: #64748b;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
