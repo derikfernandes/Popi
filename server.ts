@@ -1,8 +1,9 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import dotenv from "dotenv";
+import mammoth from "mammoth";
 
 dotenv.config();
 
@@ -10,26 +11,6 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: "50mb" }));
-
-// Initialize GoogleGenAI client lazily to avoid startup crashes if missing key
-let aiClient: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not defined. Please add it to your secrets/variables.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
-  }
-  return aiClient;
-}
 
 // Utility to replace placeholders in dynamic prompt templates
 function renderPrompt(template: string, values: Record<string, any>): string {
@@ -42,6 +23,180 @@ function renderPrompt(template: string, values: Record<string, any>): string {
   }
   return result;
 }
+
+const IMPORT_FILE_MAX_BYTES = 15 * 1024 * 1024;
+const PDF_MIME = "application/pdf";
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function decodeImportFile(fileBase64: unknown): Buffer {
+  if (typeof fileBase64 !== "string" || !fileBase64.trim()) {
+    throw new Error("O conteúdo do arquivo é obrigatório.");
+  }
+
+  const cleanBase64 = fileBase64
+    .replace(/^data:[^;]+;base64,/i, "")
+    .replace(/\s/g, "");
+
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleanBase64)) {
+    throw new Error("O arquivo enviado não está em base64 válido.");
+  }
+
+  const buffer = Buffer.from(cleanBase64, "base64");
+  if (!buffer.length) {
+    throw new Error("O arquivo enviado está vazio.");
+  }
+  if (buffer.length > IMPORT_FILE_MAX_BYTES) {
+    throw new Error("O arquivo excede o limite de 15 MB.");
+  }
+  return buffer;
+}
+
+function buildImportPrompt(filename: string): string {
+  return `Você é um especialista em gestão pública e mapeamento de processos.
+Analise o POP existente anexado e extraia informações para preencher o questionário de mapeamento POPI.
+
+Arquivo: ${filename}
+
+Regras obrigatórias:
+1. Use somente informações encontradas no documento. Não invente dados.
+2. Quando uma informação não existir, retorne string vazia ou lista vazia e registre uma lacuna em "gaps".
+3. "routine_type" deve ser exatamente uma destas opções: "Atende diretamente o cidadão", "Rotina interna" ou "Outro".
+4. Para frequência, preserve uma descrição objetiva encontrada no documento; se não houver, use string vazia.
+5. Estruture participantes, passo a passo e metas/indicadores nos arrays correspondentes.
+6. Não trate uma recomendação futura como etapa atual do processo.
+7. Em "meta", extraia título, departamento e divisão quando existirem.
+8. Crie uma lacuna para cada assunto relevante do questionário que não tenha sido localizado.
+9. Para participantes, passo a passo e metas/indicadores, registre uma única lacuna no campo principal; não duplique a lacuna no respectivo campo de texto livre.
+10. Em "gaps.field", use somente o nome direto do campo, sem prefixos como "inputs." ou "meta.".
+11. O nível de confiança deve ser "baixo", "médio" ou "alto".
+12. Retorne somente o JSON solicitado pelo schema.`;
+}
+
+const importPopResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    meta: {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        department: { type: Type.STRING },
+        division: { type: Type.STRING },
+      },
+      required: ["title", "department", "division"],
+    },
+    inputs: {
+      type: Type.OBJECT,
+      properties: {
+        role_or_position: { type: Type.STRING },
+        routine_name: { type: Type.STRING },
+        routine_goal: { type: Type.STRING },
+        routine_type: { type: Type.STRING },
+        routine_type_detail: { type: Type.STRING },
+        start_trigger: { type: Type.STRING },
+        frequency: { type: Type.STRING },
+        frequency_detail: { type: Type.STRING },
+        participants: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              setor_ou_funcao: { type: Type.STRING },
+              responsabilidade: { type: Type.STRING },
+            },
+            required: ["setor_ou_funcao", "responsabilidade"],
+          },
+        },
+        participants_free: { type: Type.STRING },
+        norma_orientadora: { type: Type.STRING },
+        passo_a_passo: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              numero: { type: Type.INTEGER },
+              atividade: { type: Type.STRING },
+              responsavel: { type: Type.STRING },
+              sistema_ou_documento: { type: Type.STRING },
+              resultado_da_etapa: { type: Type.STRING },
+            },
+            required: [
+              "numero",
+              "atividade",
+              "responsavel",
+              "sistema_ou_documento",
+              "resultado_da_etapa",
+            ],
+          },
+        },
+        passo_a_passo_free: { type: Type.STRING },
+        sistemas_documentos_utilizados: { type: Type.STRING },
+        informacoes_indispensaveis: { type: Type.STRING },
+        tempo_medio: { type: Type.STRING },
+        gargalos_dificuldades: { type: Type.STRING },
+        melhorias_automacoes_sugeridas: { type: Type.STRING },
+        metas_indicadores: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              indicador: { type: Type.STRING },
+              meta: { type: Type.STRING },
+              forma_de_medicao: { type: Type.STRING },
+              fonte_dados: { type: Type.STRING },
+              periodicidade: { type: Type.STRING },
+            },
+            required: [
+              "indicador",
+              "meta",
+              "forma_de_medicao",
+              "fonte_dados",
+              "periodicidade",
+            ],
+          },
+        },
+        metas_indicadores_free: { type: Type.STRING },
+      },
+      required: [
+        "role_or_position",
+        "routine_name",
+        "routine_goal",
+        "routine_type",
+        "routine_type_detail",
+        "start_trigger",
+        "frequency",
+        "frequency_detail",
+        "participants",
+        "participants_free",
+        "norma_orientadora",
+        "passo_a_passo",
+        "passo_a_passo_free",
+        "sistemas_documentos_utilizados",
+        "informacoes_indispensaveis",
+        "tempo_medio",
+        "gargalos_dificuldades",
+        "melhorias_automacoes_sugeridas",
+        "metas_indicadores",
+        "metas_indicadores_free",
+      ],
+    },
+    gaps: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          field: { type: Type.STRING },
+          label: { type: Type.STRING },
+          reason: { type: Type.STRING },
+        },
+        required: ["field", "label", "reason"],
+      },
+    },
+    confidence: { type: Type.STRING },
+    summary: { type: Type.STRING },
+  },
+  required: ["meta", "inputs", "gaps", "confidence", "summary"],
+};
 
 // Helper function to obtain a Google OAuth access token using the refresh token for Vertex AI calls
 async function getVertexAccessToken(): Promise<string> {
@@ -163,7 +318,7 @@ async function callVertexAI(
   return { text };
 }
 
-// Helper function to call generateContent with retry and model fallback specifically for 503/transient errors
+// Helper function to call Vertex AI generateContent with retry for transient errors
 async function generateContentWithFallback(
   params: {
     model: string;
@@ -172,60 +327,30 @@ async function generateContentWithFallback(
   },
   maxRetries = 3
 ): Promise<any> {
-  const isVertexConfigured = !!(
-    process.env.GOOGLE_OAUTH_CLIENT_ID &&
-    process.env.GOOGLE_OAUTH_CLIENT_SECRET &&
-    process.env.GOOGLE_OAUTH_REFRESH_TOKEN
-  );
-
-  if (isVertexConfigured) {
-    const vertexModels = getVertexModelsToTry();
-    console.log(`Vertex AI is configured! Attempting Vertex REST calls with model: ${vertexModels.join(", ")}...`);
-    let lastVertexError: any = null;
-
-    for (const currentModel of vertexModels) {
-      let delay = 1000;
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          console.log(`Calling Vertex AI using model: '${currentModel}' (attempt ${attempt}/${maxRetries})...`);
-          const response = await callVertexAI(currentModel, params);
-          return response;
-        } catch (err: any) {
-          lastVertexError = err;
-          console.warn(
-            `Vertex Exception on model '${currentModel}' (attempt ${attempt}/${maxRetries}):`,
-            err?.message || JSON.stringify(err)
-          );
-          if (attempt < maxRetries) {
-            await new Promise((resolve) => setTimeout(resolve, delay));
-            delay *= 2;
-          }
-        }
-      }
-    }
-    
-    console.warn("All Vertex AI models failed. Falling back to default Google AI SDK...");
+  if (
+    !process.env.GOOGLE_OAUTH_CLIENT_ID ||
+    !process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+    !process.env.GOOGLE_OAUTH_REFRESH_TOKEN
+  ) {
+    throw new Error(
+      "Credenciais do Vertex AI OAuth não estão configuradas (GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN)."
+    );
   }
 
-  // Fallback to default Google AI SDK with normal API Key
-  const modelsToTry = Array.from(new Set([params.model, "gemini-3.1-flash-lite", "gemini-flash-latest"]));
-  let lastError: any = null;
+  const vertexModels = getVertexModelsToTry();
+  console.log(`Calling Vertex AI with model: ${vertexModels.join(", ")}...`);
+  let lastVertexError: any = null;
 
-  for (const currentModel of modelsToTry) {
+  for (const currentModel of vertexModels) {
     let delay = 1000;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`Calling Gemini API via SDK using model: '${currentModel}' (attempt ${attempt}/${maxRetries})...`);
-        const ai = getGenAI();
-        const response = await ai.models.generateContent({
-          ...params,
-          model: currentModel,
-        });
-        return response;
+        console.log(`Calling Vertex AI using model: '${currentModel}' (attempt ${attempt}/${maxRetries})...`);
+        return await callVertexAI(currentModel, params);
       } catch (err: any) {
-        lastError = err;
+        lastVertexError = err;
         console.warn(
-          `Exception on model '${currentModel}' (attempt ${attempt}/${maxRetries}):`,
+          `Vertex Exception on model '${currentModel}' (attempt ${attempt}/${maxRetries}):`,
           err?.message || JSON.stringify(err)
         );
         if (attempt < maxRetries) {
@@ -234,9 +359,9 @@ async function generateContentWithFallback(
         }
       }
     }
-    console.warn(`All ${maxRetries} attempts failed for model '${currentModel}'. Trying fallback model if available...`);
   }
-  throw lastError || new Error("Erro desconhecido ao chamar a API do Gemini");
+
+  throw lastVertexError || new Error("Erro desconhecido ao chamar a API do Vertex AI");
 }
 
 
@@ -247,6 +372,97 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
+// Importa um POP existente e devolve somente os dados do questionário + lacunas.
+app.post("/api/import-pop", async (req, res) => {
+  try {
+    const { fileBase64, mimeType, filename, customPrompt } = req.body ?? {};
+    if (mimeType !== PDF_MIME && mimeType !== DOCX_MIME) {
+      return res.status(400).json({
+        error: "Formato não permitido. Envie um arquivo PDF ou Word (.docx).",
+      });
+    }
+
+    const safeFilename =
+      typeof filename === "string" && filename.trim()
+        ? filename.trim().slice(0, 180)
+        : "documento-importado";
+    const fileBuffer = decodeImportFile(fileBase64);
+
+    if (mimeType === PDF_MIME && !fileBuffer.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
+      return res.status(400).json({ error: "O arquivo enviado não é um PDF válido." });
+    }
+    if (
+      mimeType === DOCX_MIME &&
+      !(fileBuffer[0] === 0x50 && fileBuffer[1] === 0x4b)
+    ) {
+      return res.status(400).json({ error: "O arquivo enviado não é um DOCX válido." });
+    }
+
+    const activePrompt =
+      typeof customPrompt === "string" && customPrompt.trim()
+        ? renderPrompt(customPrompt, { filename: safeFilename })
+        : buildImportPrompt(safeFilename);
+
+    let contents: any;
+    if (mimeType === PDF_MIME) {
+      contents = [
+        {
+          role: "user",
+          parts: [
+            { text: activePrompt },
+            {
+              inlineData: {
+                mimeType: PDF_MIME,
+                data: fileBuffer.toString("base64"),
+              },
+            },
+          ],
+        },
+      ];
+    } else {
+      const extracted = await mammoth.extractRawText({ buffer: fileBuffer });
+      const documentText = extracted.value.trim();
+      if (!documentText) {
+        return res.status(422).json({
+          error:
+            "Não foi possível encontrar texto no arquivo Word. Verifique se o documento não contém apenas imagens.",
+        });
+      }
+      contents = [
+        {
+          role: "user",
+          parts: [
+            { text: activePrompt },
+            {
+              text: `CONTEÚDO EXTRAÍDO DO DOCUMENTO WORD:\n\n${documentText}`,
+            },
+          ],
+        },
+      ];
+    }
+
+    const response = await generateContentWithFallback({
+      model: "gemini-3.5-flash",
+      contents,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: importPopResponseSchema,
+        temperature: 0.1,
+      },
+    });
+
+    const parsed = JSON.parse(response.text || "{}");
+    res.json(parsed);
+  } catch (error: any) {
+    console.error("Erro em /api/import-pop:", error);
+    const message = error?.message || "Erro ao importar POP com IA";
+    if (message.includes("15 MB")) {
+      return res.status(413).json({ error: message });
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
 // 1. Suggest Categories (using Type.OBJECT response schema)
 app.post("/api/suggest-categories", async (req, res) => {
   try {
@@ -255,7 +471,6 @@ app.post("/api/suggest-categories", async (req, res) => {
       return res.status(400).json({ error: "Dados de entrada (inputs) são obrigatórios" });
     }
 
-    const ai = getGenAI();
     let promptTemplate = "";
     
     if (customPrompt) {
@@ -366,7 +581,6 @@ app.post("/api/generate-popi", async (req, res) => {
       return res.status(400).json({ error: "POPI e inputs são obrigatórios" });
     }
 
-    const ai = getGenAI();
     const prompt = `
 Você é um especialista sênior em gestão pública, controle interno, mapeamento de processos, de Procedimento Operacional Padrão, análise AS-IS/TO-BE, desenho de fluxos, melhoria contínua e automação aplicada ao setor público.
 
@@ -443,9 +657,13 @@ REGRAS OBRIGATÓRIAS:
 2. Não invente informações fictícias. Se algo essencial faltar, registre como "não informado" ou lance como lacuna para posterior entrevista ou validação.
 3. Não cite nomes de pessoas físicas ou servidores específicos. Prefira cargos, funções ou secretarias.
 4. Escreva com linguagem profissional, objetiva e adequada a governos.
-5. Gere um fluxograma AS-IS em Mermaid de forma obrigatória usando flowchart TD.
-6. Se houver informações suficientes, gere também um novo fluxograma TO-BE baseado em melhorias em Mermaid usando flowchart TD.
-7. Respeite perfeitamente a estrutura obrigatória definida abaixo.
+5. Gere um fluxograma AS-IS em Mermaid de forma obrigatória usando flowchart TD (seção 7 da PARTE 1).
+6. Gere DOIS fluxogramas TO-BE em Mermaid usando flowchart TD, em seções separadas da PARTE 2:
+   a) FLUXOGRAMA TO-BE (ALTERAÇÕES DE FLUXO DE ROTINA): novo fluxo com melhorias de organização do trabalho, etapas, responsabilidades e sequência — sem depender de novos sistemas.
+   b) FLUXOGRAMA TO-BE (ALTERAÇÕES SISTÊMICAS): novo fluxo considerando automações, integrações entre sistemas, robôs ou tecnologia.
+   Se não houver informação suficiente para algum dos dois, escreva "Sem alterações sugeridas para este cenário." na seção correspondente e NÃO inclua o bloco mermaid dessa seção.
+7. Em nós Mermaid, se o texto contiver parênteses, vírgulas, dois-pontos ou aspas, SEMPRE use aspas duplas no rótulo. Exemplo correto: A["Vaga também no SIRESP (CROSS)"]. Exemplo incorreto: A[Vaga também no SIRESP (CROSS)].
+8. Respeite perfeitamente a estrutura obrigatória definida abaixo.
 
 ESTRUTURA OBRIGATÓRIA DA SAÍDA:
 
@@ -543,13 +761,21 @@ flowchart TD
 ## 8 — Novo fluxo sugerido
 [Visão TO-BE textual]
 
-## 9 — Novo fluxograma sugerido
+## 9 — Fluxograma TO-BE (Alterações de Fluxo de Rotina)
+[Breve explicação das mudanças de fluxo de trabalho, sem depender de novos sistemas]
 \`\`\`mermaid
 flowchart TD
-    [FLUXOGRAMA TO-BE OPCEONAL]
+    [FLUXOGRAMA TO-BE DE FLUXO DE ROTINA]
 \`\`\`
 
-## 10 — Anexos
+## 10 — Fluxograma TO-BE (Alterações Sistêmicas)
+[Breve explicação das mudanças com automações, integrações e tecnologia]
+\`\`\`mermaid
+flowchart TD
+    [FLUXOGRAMA TO-BE SISTÊMICO]
+\`\`\`
+
+## 11 — Anexos
 [Lista de anexos recomendados adicionais]
 
 ---
@@ -612,7 +838,6 @@ app.post("/api/normalize-inputs", async (req, res) => {
       return res.status(400).json({ error: "Inputs são obrigatórios" });
     }
 
-    const ai = getGenAI();
     let activePrompt = "";
 
     if (customPrompt) {
@@ -693,78 +918,6 @@ Retorne estritamente um JSON no seguinte formato:`;
   }
 });
 
-// 4. Edit POPI technical editor
-app.post("/api/edit-popi", async (req, res) => {
-  try {
-    const { documentMarkdown, inputs, requestText, customPrompt } = req.body;
-    if (!documentMarkdown || !requestText) {
-      return res.status(400).json({ error: "Documento e solicitação de edição são obrigatórios" });
-    }
-
-    const ai = getGenAI();
-    let activePrompt = "";
-
-    if (customPrompt) {
-      activePrompt = renderPrompt(customPrompt, {
-        documentMarkdown,
-        inputs,
-        requestText
-      });
-    } else {
-      activePrompt = `Você é um editor técnico de POPI — Procedimento Operativo Padrão Inteligente.
-Sua tarefa é aplicar uma edição solicitada pelo usuário em um POPI existente. Prescrevemos modificações cirúrgicas.
-
-Documento atual:
-${documentMarkdown}
-
-Dados de origem atuais:
-${JSON.stringify(inputs || {}, null, 2)}
-
-Solicitação do usuário:
-${requestText}
-
-Regras:
-1. Aplique com cuidado a alteração solicitada no documento Markdown. Retorne o documento revisado completo.
-2. Não invente novas informações que não foram solicitadas.
-3. Não mude o número do relatório ou informações estruturais se não solicitado.
-
-Gere uma resposta em JSON com a estrutura:
-{
-  "alteracao_realizada": "breve resumo da alteração",
-  "partes_impactadas": ["POP", "fluxograma", etc.],
-  "regeracao_recomenda": "nenhuma" | "parcial" | "inteiro",
-  "documento_revisado": "Seu markdown revisado completo aqui"
-}`;
-    }
-
-    const response = await generateContentWithFallback({
-      model: "gemini-3.5-flash",
-      contents: activePrompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            alteracao_realizada: { type: Type.STRING },
-            partes_impactadas: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-            regeracao_recomenda: { type: Type.STRING },
-            documento_revisado: { type: Type.STRING },
-          },
-          required: ["alteracao_realizada", "partes_impactadas", "documento_revisado"],
-        },
-      },
-    });
-
-    res.json(JSON.parse(response.text || "{}"));
-  } catch (error: any) {
-    console.error("Erro em /api/edit-popi:", error);
-    res.status(500).json({ error: error.message || "Erro ao editar POPI com IA" });
-  }
-});
-
 // 5. QA process adversarial review
 app.post("/api/qa-popi", async (req, res) => {
   try {
@@ -773,7 +926,6 @@ app.post("/api/qa-popi", async (req, res) => {
       return res.status(400).json({ error: "Documento Markdown é obrigatório" });
     }
 
-    const ai = getGenAI();
     let activePrompt = "";
 
     if (customPrompt) {

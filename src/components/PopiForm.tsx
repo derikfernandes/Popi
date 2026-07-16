@@ -1,9 +1,14 @@
 import React, { useState } from "react";
 import { Secretaria, POPIInput, Participant, PassoAPasso, MetaIndicador, POPI } from "../types";
 import { 
-  Save, Sparkles, Plus, Trash2, ArrowLeft, ArrowRight, Library, Info, HelpCircle, 
-  HelpCircle as QuestionIcon, HelpCircle as HintIcon, CheckCircle2 
+  Save, Plus, Trash2, ArrowLeft, ArrowRight, Library, Info, HelpCircle, 
+  HelpCircle as QuestionIcon, HelpCircle as HintIcon, CheckCircle2, AlertTriangle
 } from "lucide-react";
+import SearchableSelect from "./SearchableSelect";
+import {
+  getGapBlock,
+  type ImportReviewInfo,
+} from "../utils/importPop";
 
 interface PopiFormProps {
   initialInputs: POPIInput | null;
@@ -12,18 +17,23 @@ interface PopiFormProps {
   onCancel: () => void;
   popiId?: string;
   activePopi?: POPI | null;
-  customNormalizePrompt?: string;
+  importReviewInfo?: ImportReviewInfo | null;
 }
 
-export default function PopiForm({ initialInputs, secretarias, onSave, onCancel, popiId, activePopi, customNormalizePrompt }: PopiFormProps) {
+export default function PopiForm({
+  initialInputs,
+  secretarias,
+  onSave,
+  onCancel,
+  popiId,
+  activePopi,
+  importReviewInfo,
+}: PopiFormProps) {
   // Navigation blocks
   const [currentBlock, setCurrentBlock] = useState(1);
 
-  // Normalization loading
-  const [isNormalizing, setIsNormalizing] = useState(false);
-
   // Metadata
-  const [secretariaId, setSecretariaId] = useState(activePopi?.secretaria_id || secretarias[0]?.id || "");
+  const [secretariaId, setSecretariaId] = useState(activePopi?.secretaria_id || "");
   const [department, setDepartment] = useState(activePopi?.department || "");
   const [division, setDivision] = useState(activePopi?.division || "");
   const [title, setTitle] = useState(activePopi?.title || "");
@@ -91,50 +101,6 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
     }
   }, [initialInputs, activePopi]);
 
-  // AI Normalizer - Uses the backend api to turn free text into beautifully structured arrays!
-  const handleAINormalize = async () => {
-    if (!participantsFree && !passoAPassoFree && !metasIndicadoresFree) {
-      alert("Escreva alguma descrição textual nos campos de participantes (Q8), passo a passo (Q10) ou metas (Q16) antes de otimizar com IA.");
-      return;
-    }
-
-    setIsNormalizing(true);
-    try {
-      const resp = await fetch("/api/normalize-inputs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inputs: {
-            participants_free: participantsFree,
-            passo_a_passo_free: passoAPassoFree,
-            metas_indicadores_free: metasIndicadoresFree,
-          },
-          customPrompt: customNormalizePrompt,
-        }),
-      });
-
-      if (!resp.ok) throw new Error("Erro na solicitação com a IA");
-      const normalized = await resp.json();
-
-      if (normalized.participants?.length > 0) {
-        setParticipants(normalized.participants);
-        setParticipantsFree("");
-      }
-      if (normalized.passo_a_passo?.length > 0) {
-        setPassoAPasso(normalized.passo_a_passo);
-        setPassoAPassoFree("");
-      }
-      if (normalized.metas_indicadores?.length > 0) {
-        setMetasIndicadores(normalized.metas_indicadores);
-        setMetasIndicadoresFree("");
-      }
-    } catch (err: any) {
-      alert("Não foi possível processar a otimização automática: " + err.message);
-    } finally {
-      setIsNormalizing(false);
-    }
-  };
-
   // Helper functions to manage dynamic tables
   const addParticipantRow = () => {
     setParticipants([...participants, { setor_ou_funcao: "", responsabilidade: "" }]);
@@ -192,11 +158,111 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
     setMetasIndicadores(updated);
   };
 
+  const hasFilledParticipants = () =>
+    participantsFree.trim().length > 0 ||
+    participants.some((p) => p.setor_ou_funcao.trim() && p.responsabilidade.trim());
+
+  const hasFilledPassoAPasso = () =>
+    passoAPassoFree.trim().length > 0 ||
+    passoAPasso.some(
+      (s) =>
+        s.atividade.trim() &&
+        s.responsavel.trim() &&
+        s.sistema_ou_documento.trim() &&
+        s.resultado_da_etapa.trim()
+    );
+
+  const hasFilledMetas = () =>
+    metasIndicadoresFree.trim().length > 0 ||
+    metasIndicadores.some(
+      (m) =>
+        m.indicador.trim() &&
+        m.meta.trim() &&
+        m.forma_de_medicao.trim() &&
+        m.periodicidade.trim()
+    );
+
+  /** Valida um bloco do wizard. Retorna mensagem de erro ou null se válido. */
+  const validateBlock = (block: number): string | null => {
+    if (block === 1) {
+      if (!secretariaId.trim()) return "Selecione a Secretaria Executante.";
+      if (!department.trim()) return "Preencha o Departamento / Setor.";
+      if (!division.trim()) return "Preencha a Divisão Organizacional.";
+      if (!roleOrPosition.trim()) return "Preencha o Cargo ou Função do informante.";
+      if (!title.trim()) return "Preencha o Nome da Rotina de Trabalho.";
+      if (!goal.trim()) return "Preencha o Objetivo da rotina.";
+    }
+
+    if (block === 2) {
+      if (!routineType.trim()) return "Selecione o tipo da rotina.";
+      if (routineType === "Outro" && !routineTypeDetail.trim()) {
+        return "Especifique o tipo da rotina (campo Outro).";
+      }
+      if (!startTrigger.trim()) return "Preencha o gatilho que inicia a rotina.";
+      if (!frequency.trim()) return "Selecione a frequência da atividade.";
+      if (frequency === "Outro" && !frequencyDetail.trim()) {
+        return "Especifique a frequência (campo Outro).";
+      }
+    }
+
+    if (block === 3) {
+      if (!hasFilledParticipants()) {
+        return "Informe quem participa da rotina (texto livre ou tabela estruturada).";
+      }
+      if (!normaOrientadora.trim()) {
+        return "Informe a lei, decreto ou norma reguladora (ou indique que não há).";
+      }
+    }
+
+    if (block === 4) {
+      if (!hasFilledPassoAPasso()) {
+        return "Descreva o passo a passo da rotina (texto livre ou etapas estruturadas completas).";
+      }
+      if (!sistemasDocumentos.trim()) {
+        return "Informe os sistemas, planilhas ou documentos utilizados.";
+      }
+      if (!informacoesIndispensaveis.trim()) {
+        return "Informe as informações ou documentos indispensáveis para iniciar a rotina.";
+      }
+      if (!tempoMedio.trim()) return "Selecione o tempo médio de execução.";
+    }
+
+    if (block === 5) {
+      if (!gargalos.trim()) return "Descreva os atrasos ou dificuldades da rotina.";
+      if (!melhorias.trim()) return "Descreva o que poderia ser automatizado ou melhorado.";
+      if (!hasFilledMetas()) {
+        return "Informe metas ou indicadores (texto livre ou tabela estruturada completa).";
+      }
+    }
+
+    return null;
+  };
+
+  const validateAllBlocks = (): { block: number; message: string } | null => {
+    for (let block = 1; block <= 5; block++) {
+      const message = validateBlock(block);
+      if (message) return { block, message };
+    }
+    return null;
+  };
+
+  const goToNextBlock = () => {
+    const error = validateBlock(currentBlock);
+    if (error) {
+      alert(error);
+      return;
+    }
+    setCurrentBlock(currentBlock + 1);
+  };
+
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) {
-      alert("O nome da rotina (Título) é essencial para identificação.");
+
+    const validationError = validateAllBlocks();
+    if (validationError) {
+      setCurrentBlock(validationError.block);
+      alert(validationError.message);
       return;
     }
 
@@ -234,6 +300,55 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden max-w-5xl mx-auto">
+      {importReviewInfo && (
+        <section className="border-b border-amber-200 bg-amber-50 px-6 py-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-bold text-amber-950">
+                  Rascunho importado de {importReviewInfo.filename}
+                </h2>
+                <span className="rounded-full border border-amber-300 bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                  Confiança {importReviewInfo.confidence}
+                </span>
+              </div>
+              {importReviewInfo.summary && (
+                <p className="mt-1 text-xs leading-relaxed text-amber-900">
+                  {importReviewInfo.summary}
+                </p>
+              )}
+
+              {importReviewInfo.gaps.length > 0 ? (
+                <div className="mt-3">
+                  <p className="text-xs font-bold text-amber-950">
+                    Assuntos não encontrados — complete antes de salvar:
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {importReviewInfo.gaps.map((gap, index) => (
+                      <button
+                        key={`${gap.field}-${index}`}
+                        type="button"
+                        title={gap.reason}
+                        onClick={() => setCurrentBlock(getGapBlock(gap.field))}
+                        className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-left text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
+                      >
+                        {gap.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs font-semibold text-emerald-800">
+                  Nenhuma lacuna foi identificada automaticamente. Revise os
+                  dados antes de salvar.
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Form Title & Stepper */}
       <div className="bg-slate-50 border-b border-slate-100 px-6 py-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -245,16 +360,6 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
               Forneça detalhes estruturados do processo de forma amigável.
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={handleAINormalize}
-            disabled={isNormalizing}
-            className="self-start md:self-auto inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow-sm transition disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4" />
-            {isNormalizing ? "Otimizando..." : "Otimizar tabelas com I.A."}
-          </button>
         </div>
 
         {/* Wizard indicators */}
@@ -294,17 +399,16 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
                 <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
                   1. Secretaria Executante <span className="text-red-500">*</span>
                 </label>
-                <select
+                <SearchableSelect
                   value={secretariaId}
-                  onChange={(e) => setSecretariaId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg h-10 px-3 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
-                >
-                  {secretarias.map((sec) => (
-                    <option key={sec.id} value={sec.id}>
-                      {sec.official_name} ({sec.acronym})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSecretariaId}
+                  options={secretarias.map((sec) => ({
+                    value: sec.id,
+                    label: `${sec.official_name} (${sec.acronym})`,
+                  }))}
+                  placeholder="Selecione a secretaria..."
+                  searchPlaceholder="Pesquisar secretaria..."
+                />
               </div>
 
               <div>
@@ -322,13 +426,16 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Divisão Organizacional</label>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  Divisão Organizacional <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   placeholder="Ex: Central de Agendamentos"
                   value={division}
                   onChange={(e) => setDivision(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg h-10 px-3 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
+                  required
                 />
               </div>
 
@@ -423,6 +530,7 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
                     value={routineTypeDetail}
                     onChange={(e) => setRoutineTypeDetail(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg h-10 px-3 text-sm mt-3 focus:outline-none focus:border-blue-500 focus:bg-white"
+                    required
                   />
                 )}
               </div>
@@ -481,6 +589,7 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
                     value={frequencyDetail}
                     onChange={(e) => setFrequencyDetail(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg h-10 px-3 text-sm mt-3 focus:outline-none focus:border-blue-500 focus:bg-white"
+                    required
                   />
                 )}
               </div>
@@ -566,14 +675,16 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
 
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                  9. Existe alguma lei, decreto ou norma reguladora nacional/local?
+                  9. Existe alguma lei, decreto ou norma reguladora nacional/local?{" "}
+                  <span className="text-red-500">*</span>
                 </label>
                 <textarea
-                  placeholder="Ex: Lei 14.133/2021, Portaria SMS 245/2016..."
+                  placeholder="Ex: Lei 14.133/2021, Portaria SMS 245/2016... (ou indique que não há norma específica)"
                   value={normaOrientadora}
                   onChange={(e) => setNormaOrientadora(e.target.value)}
                   rows={2}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
+                  required
                 />
               </div>
             </div>
@@ -620,7 +731,7 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
 
                       {passoAPasso.length === 0 ? (
                         <div className="text-center py-6 text-xs text-slate-400 bg-white rounded-lg border border-dashed border-slate-200">
-                          Nenhuma etapa estruturada ainda. Digite seu texto livre acima e clique no botão superior "Otimizar tabelas com I.A." para gerar as etapas perfeitamente automáticas!
+                          Nenhuma etapa estruturada ainda. Descreva a sequência no texto livre acima ou clique em "Adicionar Etapa" para preencher manualmente.
                         </div>
                       ) : (
                         <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
@@ -885,7 +996,7 @@ export default function PopiForm({ initialInputs, secretarias, onSave, onCancel,
             {currentBlock < 5 ? (
               <button
                 type="button"
-                onClick={() => setCurrentBlock(currentBlock + 1)}
+                onClick={goToNextBlock}
                 className="inline-flex items-center gap-1 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 h-10 px-4 rounded-xl text-sm font-bold transition"
               >
                 Próximo <ArrowRight className="w-4 h-4" />

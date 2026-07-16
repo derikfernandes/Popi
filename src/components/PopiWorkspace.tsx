@@ -1,11 +1,23 @@
-import React, { useState } from "react";
+import React, { useState, Suspense, lazy, useRef } from "react";
 import { POPI, POPIInput, POPIDocument, POPIClassification, POPIVersion, Participant, PassoAPasso } from "../types";
 import { 
   ArrowLeft, Sparkles, FileText, FileCode, GitBranch, ShieldCheck, 
-  Download, Edit2, Play, ThumbsUp, RefreshCw, Send, Check, AlertTriangle, HelpCircle, 
-  Terminal, ArrowRightLeft, Lock, Save
+  Download, Edit2, Play, ThumbsUp, RefreshCw, Check, AlertTriangle, HelpCircle, 
+  ArrowRightLeft, Lock, Save
 } from "lucide-react";
-import MermaidRenderer from "./MermaidRenderer";
+import type { QaPopiResponse } from "../services/popiApi";
+import PageLoading from "./PageLoading";
+import ExportOptionsPanel from "./ExportOptionsPanel";
+import MarkdownDocument from "./MarkdownDocument";
+import SearchableSelect from "./SearchableSelect";
+import { exportPopiDocument, type ExportFormat } from "../utils/exportPopi";
+import {
+  IMPROVEMENT_CATEGORIES,
+  IMPROVEMENT_CATEGORY_HINTS,
+  MAX_IMPROVEMENT_CATEGORIES,
+} from "../data";
+
+const MermaidRenderer = lazy(() => import("./MermaidRenderer"));
 
 interface PopiWorkspaceProps {
   popi: POPI;
@@ -17,12 +29,18 @@ interface PopiWorkspaceProps {
   onBack: () => void;
   onUpdateStatus: (id: string, status: POPI["status"]) => void;
   onGeneratePOPI: (id: string) => Promise<void>;
-  onRunQA: (id: string) => Promise<any>;
+  onRunQA: (id: string) => Promise<QaPopiResponse | undefined>;
   onRestoreVersion: (id: string, versionId: string) => void;
-  onSaveManualEdit: (id: string, popMarkdown: string, reportMarkdown: string, flowchartMermaid?: string) => void;
+  onSaveManualEdit: (
+    id: string,
+    popMarkdown: string,
+    reportMarkdown: string,
+    flowchartMermaid?: string,
+    flowchartTobeFlow?: string,
+    flowchartTobeSystem?: string
+  ) => void;
   onSuggestClassification: (id: string) => Promise<void>;
   onSaveClassification: (id: string, category: string, improvements: string[]) => void;
-  onRunAICommand: (id: string, commandText: string) => Promise<void>;
 }
 
 export default function PopiWorkspace({
@@ -40,7 +58,6 @@ export default function PopiWorkspace({
   onSaveManualEdit,
   onSuggestClassification,
   onSaveClassification,
-  onRunAICommand,
 }: PopiWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<
     "input" | "class" | "pop" | "report" | "flowchart" | "versions" | "qa"
@@ -52,10 +69,12 @@ export default function PopiWorkspace({
   const [editedReport, setEditedReport] = useState(document?.intelligent_report_markdown || "");
   const [isEditingFlowchart, setIsEditingFlowchart] = useState(false);
   const [editedFlowchart, setEditedFlowchart] = useState(document?.flowchart_mermaid || "");
-
-  // AI Command box
-  const [aiCommand, setAiCommand] = useState("");
-  const [isRunningCommand, setIsRunningCommand] = useState(false);
+  const [editedFlowchartTobeFlow, setEditedFlowchartTobeFlow] = useState(
+    document?.flowchart_tobe_flow_mermaid || ""
+  );
+  const [editedFlowchartTobeSystem, setEditedFlowchartTobeSystem] = useState(
+    document?.flowchart_tobe_system_mermaid || ""
+  );
 
   // QA Report results
   const [qaResult, setQaResult] = useState<any>(null);
@@ -73,26 +92,50 @@ export default function PopiWorkspace({
   const [compareVersionId, setCompareVersionId] = useState<string>("");
   const [compareResult, setCompareResult] = useState<any>(null);
 
+  // Export panel
+  const [showExportPanel, setShowExportPanel] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("md");
+  const [isExporting, setIsExporting] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
   React.useEffect(() => {
     if (document) {
       setEditedPop(document.pop_markdown);
       setEditedReport(document.intelligent_report_markdown);
       setEditedFlowchart(document.flowchart_mermaid);
+      setEditedFlowchartTobeFlow(document.flowchart_tobe_flow_mermaid || "");
+      setEditedFlowchartTobeSystem(document.flowchart_tobe_system_mermaid || "");
     }
     setCuratedCategory(popi.routine_category || "");
-    setCuratedImprovements(popi.improvement_categories || []);
+    setCuratedImprovements(
+      (popi.improvement_categories || []).slice(0, MAX_IMPROVEMENT_CATEGORIES)
+    );
   }, [document, popi]);
 
   const handleManualSave = () => {
-    onSaveManualEdit(popi.id, editedPop, editedReport, editedFlowchart);
+    onSaveManualEdit(
+      popi.id,
+      editedPop,
+      editedReport,
+      editedFlowchart,
+      editedFlowchartTobeFlow,
+      editedFlowchartTobeSystem
+    );
     setIsEditing(false);
     alert("Alterações salvas como nova versão manual com sucesso!");
   };
 
   const handleFlowchartSave = () => {
-    onSaveManualEdit(popi.id, editedPop, editedReport, editedFlowchart);
+    onSaveManualEdit(
+      popi.id,
+      editedPop,
+      editedReport,
+      editedFlowchart,
+      editedFlowchartTobeFlow,
+      editedFlowchartTobeSystem
+    );
     setIsEditingFlowchart(false);
-    alert("Alterações no fluxograma salvas com sucesso!");
+    alert("Alterações nos fluxogramas salvas com sucesso!");
   };
 
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
@@ -129,22 +172,24 @@ export default function PopiWorkspace({
   };
 
   const handleSaveCuration = () => {
-    onSaveClassification(popi.id, curatedCategory, curatedImprovements);
-    alert("Categorização atualizada no registro municipal com sucesso!");
+    const trimmed = curatedImprovements.slice(0, MAX_IMPROVEMENT_CATEGORIES);
+    onSaveClassification(popi.id, curatedCategory, trimmed);
+    if (trimmed.length !== curatedImprovements.length) {
+      setCuratedImprovements(trimmed);
+    }
+    alert("Classificação salva com sucesso!");
   };
 
-  const executeAICommand = async () => {
-    if (!aiCommand.trim()) return;
-    setIsRunningCommand(true);
-    try {
-      await onRunAICommand(popi.id, aiCommand);
-      setAiCommand("");
-      alert("Comando de IA concluído com sucesso e gravado como nova versão!");
-    } catch (err: any) {
-      alert("Erro ao editar com IA: " + err.message);
-    } finally {
-      setIsRunningCommand(false);
+  const toggleImprovementCategory = (opt: string) => {
+    const isSelected = curatedImprovements.includes(opt);
+    if (isSelected) {
+      setCuratedImprovements(curatedImprovements.filter((val) => val !== opt));
+      return;
     }
+    if (curatedImprovements.length >= MAX_IMPROVEMENT_CATEGORIES) {
+      return;
+    }
+    setCuratedImprovements([...curatedImprovements, opt]);
   };
 
   const executeQAAuditing = async () => {
@@ -160,15 +205,30 @@ export default function PopiWorkspace({
     }
   };
 
-  const downloadMarkdown = () => {
-    const header = `# POPI — Procedimento Operativo Padrão Inteligente\nNumeração Oficial: ${popi.report_number}\n\n`;
-    const fullText = header + (document?.final_markdown || `${document?.pop_markdown}\n\n${document?.intelligent_report_markdown}`);
-    const blob = new Blob([fullText], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = window.document.createElement("a");
-    a.href = url;
-    a.download = `${popi.report_number.replace(/\s+/g, "_")}.md`;
-    a.click();
+  const handleExport = async () => {
+    if (!document || isExporting) return;
+    setIsExporting(true);
+    try {
+      await exportPopiDocument(
+        popi,
+        {
+          ...document,
+          // Usa os fluxogramas atuais da aba (mesmo se ainda não tiverem sido salvos)
+          flowchart_mermaid: editedFlowchart || document.flowchart_mermaid,
+          flowchart_tobe_flow_mermaid:
+            editedFlowchartTobeFlow || document.flowchart_tobe_flow_mermaid,
+          flowchart_tobe_system_mermaid:
+            editedFlowchartTobeSystem || document.flowchart_tobe_system_mermaid,
+        },
+        exportFormat
+      );
+      setShowExportPanel(false);
+    } catch (err) {
+      console.error(err);
+      alert("Não foi possível concluir a exportação. Tente novamente.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleCompare = (vId: string) => {
@@ -236,13 +296,25 @@ export default function PopiWorkspace({
                 {isAuditing ? "Revisando..." : "Auditar com I.A. (QA)"}
               </button>
 
-              <button
-                onClick={downloadMarkdown}
-                className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 h-9 px-3 rounded-lg text-xs font-semibold transition"
-              >
-                <Download className="w-4 h-4" />
-                Exportar MD
-              </button>
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowExportPanel((open) => !open)}
+                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 h-9 px-3 rounded-lg text-xs font-semibold transition"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar
+                </button>
+                <ExportOptionsPanel
+                  open={showExportPanel}
+                  selectedFormat={exportFormat}
+                  onSelectFormat={setExportFormat}
+                  onExport={handleExport}
+                  onClose={() => !isExporting && setShowExportPanel(false)}
+                  containerRef={exportMenuRef}
+                  exporting={isExporting}
+                />
+              </div>
             </>
           )}
 
@@ -280,7 +352,7 @@ export default function PopiWorkspace({
           { id: "input", label: "Mapeamento (16p)" },
           { id: "class", label: "Classificação" },
           { id: "pop", label: "Procedimento (POP)", condition: !!document },
-          { id: "report", label: "Relatório TO-BE", condition: !!document },
+          { id: "report", label: "Diagnóstico", condition: !!document },
           { id: "flowchart", label: "Fluxograma", condition: !!document },
           { id: "versions", label: "Histórico (" + versions.length + ")" },
           { id: "qa", label: "Auditoria QA", condition: !!qaResult },
@@ -328,9 +400,7 @@ export default function PopiWorkspace({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Core display */}
-        <div className="lg:col-span-3 space-y-6">
+      <div className="space-y-6">
           {activeTab === "input" && (
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
               <h2 className="text-base font-bold text-slate-800 border-b pb-2">Roteiro Coletor Completo</h2>
@@ -499,11 +569,16 @@ export default function PopiWorkspace({
           {activeTab === "class" && (
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
               <div className="flex items-center justify-between border-b pb-3">
-                <h2 className="text-base font-bold text-slate-800">Categorização e Controle</h2>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">Classificação da rotina</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Defina o tipo da rotina (AS-IS) e as oportunidades de melhoria (TO-BE).
+                  </p>
+                </div>
                 <button
                   onClick={executeClassification}
                   disabled={isClassifying}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 hover:bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 hover:bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 disabled:opacity-50 shrink-0"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   {isClassifying ? "Sugerindo..." : "Sugerir com I.A."}
@@ -514,26 +589,29 @@ export default function PopiWorkspace({
               {classification && (
                 <div className="bg-indigo-50/40 border border-indigo-100/50 p-4.5 rounded-xl text-xs space-y-2">
                   <p className="font-bold text-indigo-950 flex items-center gap-1">
-                    <Sparkles className="w-4 h-4 text-indigo-700" /> Diagnóstico sugerido por IA:
+                    <Sparkles className="w-4 h-4 text-indigo-700" /> Sugestão da I.A. (revise antes de salvar):
                   </p>
                   <div className="text-slate-700 space-y-1">
-                    <p><strong>Nível de Confiança:</strong> {classification.confidence_level.toUpperCase()}</p>
-                    <p><strong>Justificativa Principal:</strong> {classification.routine_category_justification}</p>
+                    <p><strong>Nível de confiança:</strong> {classification.confidence_level.toUpperCase()}</p>
+                    <p><strong>Justificativa:</strong> {classification.routine_category_justification}</p>
                   </div>
                 </div>
               )}
 
               {/* Selection inputs */}
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Categoria Principal da Rotina</label>
-                  <select
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                    Tipo da rotina
+                  </label>
+                  <p className="text-[11px] text-slate-500 mb-2">
+                    Como esta rotina se enquadra na organização municipal hoje.
+                  </p>
+                  <SearchableSelect
                     value={curatedCategory}
-                    onChange={(e) => setCuratedCategory(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg h-10 px-3 text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {[
+                    onChange={setCuratedCategory}
+                    topOptions={[{ value: "", label: "Selecione..." }]}
+                    options={[
                       "Atendimento ao cidadão",
                       "Rotina interna administrativa",
                       "Processo de gestão",
@@ -543,48 +621,58 @@ export default function PopiWorkspace({
                       "Processo operacional",
                       "Processo tecnológico/sistemas",
                       "Outro"
-                    ].map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+                    ].map((opt) => ({ value: opt, label: opt }))}
+                    searchPlaceholder="Pesquisar tipo..."
+                    triggerClassName="w-full bg-slate-50 border border-slate-200 rounded-lg h-10 px-3 text-sm"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-2">Categorias de Melhoria Municipal (Curar até 3)</label>
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
+                    <label className="block text-xs font-bold text-slate-600 uppercase">
+                      Tipos de melhoria identificados
+                    </label>
+                    <span className="text-[10px] font-bold text-slate-400 tabular-nums">
+                      {curatedImprovements.length} de {MAX_IMPROVEMENT_CATEGORIES}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-2">
+                    Selecione até {MAX_IMPROVEMENT_CATEGORIES} tipos que melhor descrevem as oportunidades de evolução desta rotina. A I.A. pode sugerir automaticamente — você valida ou ajusta antes de salvar.
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      "Automação simples",
-                      "Integração entre sistemas",
-                      "Redução de retrabalho",
-                      "Melhoria de atendimento ao cidadão",
-                      "Melhoria de controle interno",
-                      "Melhoria de indicadores",
-                      "Uso potencial de IA",
-                      "Digitalização de processo"
-                    ].map((opt) => {
+                    {IMPROVEMENT_CATEGORIES.map((opt) => {
                       const isSelected = curatedImprovements.includes(opt);
+                      const atLimit =
+                        !isSelected &&
+                        curatedImprovements.length >= MAX_IMPROVEMENT_CATEGORIES;
+                      const hint = IMPROVEMENT_CATEGORY_HINTS[opt];
                       return (
                         <label
                           key={opt}
-                          className={`flex items-center gap-2 border rounded-lg p-2 text-xs font-semibold cursor-pointer transition ${
+                          title={hint}
+                          className={`flex flex-col gap-0.5 border rounded-lg p-2.5 transition ${
                             isSelected
-                              ? "bg-blue-50 border-blue-200 text-blue-700"
-                              : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100/50"
+                              ? "bg-blue-50 border-blue-200 text-blue-800 cursor-pointer"
+                              : atLimit
+                                ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed opacity-60"
+                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100/50 cursor-pointer"
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              if (isSelected) {
-                                setCuratedImprovements(curatedImprovements.filter((val) => val !== opt));
-                              } else {
-                                setCuratedImprovements([...curatedImprovements, opt]);
-                              }
-                            }}
-                            className="sr-only"
-                          />
-                          {opt}
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={atLimit}
+                              onChange={() => toggleImprovementCategory(opt)}
+                              className="sr-only"
+                            />
+                            <span className="text-xs font-semibold">{opt}</span>
+                          </span>
+                          {hint && (
+                            <span className="text-[10px] font-normal text-slate-500 leading-snug pl-0">
+                              {hint}
+                            </span>
+                          )}
                         </label>
                       );
                     })}
@@ -597,7 +685,7 @@ export default function PopiWorkspace({
                     className="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-4 rounded-lg transition"
                   >
                     <Save className="w-4 h-4" />
-                    Salvar Categoria Cautelar
+                    Salvar classificação
                   </button>
                 </div>
               </div>
@@ -641,20 +729,7 @@ export default function PopiWorkspace({
                   </div>
                 </div>
               ) : (
-                <div className="prose max-w-none text-sm text-slate-700 leading-relaxed space-y-4">
-                  {editedPop.split("\n").map((line, idx) => {
-                    if (line.startsWith("# ")) {
-                      return <h1 key={idx} className="text-xl font-black text-slate-900 border-b pb-1 mt-6">{line.replace("# ", "")}</h1>;
-                    }
-                    if (line.startsWith("## ")) {
-                      return <h2 key={idx} className="text-lg font-bold text-slate-800 mt-5">{line.replace("## ", "")}</h2>;
-                    }
-                    if (line.startsWith("- ")) {
-                      return <li key={idx} className="ml-4 list-disc text-slate-700">{line.replace("- ", "")}</li>;
-                    }
-                    return <p key={idx} className="whitespace-pre-line">{line}</p>;
-                  })}
-                </div>
+                <MarkdownDocument content={editedPop} />
               )}
             </div>
           )}
@@ -696,20 +771,7 @@ export default function PopiWorkspace({
                   </div>
                 </div>
               ) : (
-                <div className="prose max-w-none text-sm text-slate-700 leading-relaxed space-y-4">
-                  {editedReport.split("\n").map((line, idx) => {
-                    if (line.startsWith("# ")) {
-                      return <h1 key={idx} className="text-xl font-black text-slate-900 border-b pb-1 mt-6">{line.replace("# ", "")}</h1>;
-                    }
-                    if (line.startsWith("## ")) {
-                      return <h2 key={idx} className="text-lg font-bold text-slate-800 mt-5">{line.replace("## ", "")}</h2>;
-                    }
-                    if (line.startsWith("- ")) {
-                      return <li key={idx} className="ml-4 list-disc text-slate-700">{line.replace("- ", "")}</li>;
-                    }
-                    return <p key={idx} className="whitespace-pre-line">{line}</p>;
-                  })}
-                </div>
+                <MarkdownDocument content={editedReport} />
               )}
             </div>
           )}
@@ -718,8 +780,10 @@ export default function PopiWorkspace({
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
               <div className="flex items-center justify-between border-b pb-3 flex-wrap gap-2">
                 <div>
-                  <h2 className="text-base font-bold text-slate-800">Visualização do Processo (AS-IS / TO-BE)</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Fluxo de atividades estruturado com Mermaid dinâmico e Linha do Tempo</p>
+                  <h2 className="text-base font-bold text-slate-800">Fluxogramas do Processo</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    1 — Fluxograma AS-IS · 2 — Fluxograma TO-BE (Alterações de Fluxo de Rotina) · 3 — Fluxograma TO-BE (Alterações Sistêmicas)
+                  </p>
                 </div>
                 
                 <button
@@ -727,26 +791,51 @@ export default function PopiWorkspace({
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 border border-slate-200 rounded-lg transition"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
-                  {isEditingFlowchart ? "Visualizar Gráfico" : "Editar Código Mermaid"}
+                  {isEditingFlowchart ? "Visualizar Gráficos" : "Editar Código Mermaid"}
                 </button>
               </div>
 
               {isEditingFlowchart ? (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="bg-amber-50 border border-amber-200/50 p-3 rounded-lg text-xs text-amber-800 leading-relaxed font-semibold">
-                    Dica: O código abaixo utiliza a sintaxe Mermaid. Certifique-se de que os nós de fluxo e as setas (ex: A -- Sim --&gt; B) estejam logicamente encadeados e fechados corretamente para compilação.
+                    Dica: O código abaixo utiliza a sintaxe Mermaid. Certifique-se de que os nós de fluxo e as setas (ex: A -- Sim --&gt; B) estejam logicamente encadeados e fechados corretamente para compilação. Deixe em branco os fluxogramas TO-BE que não se aplicam.
                   </div>
-                  <textarea
-                    rows={12}
-                    value={editedFlowchart}
-                    onChange={(e) => setEditedFlowchart(e.target.value)}
-                    className="w-full font-mono text-xs bg-slate-900 text-slate-100 p-4 rounded-xl border focus:outline-none"
-                    placeholder="Escreva seu código Mermaid aqui..."
-                  />
+
+                  {[
+                    {
+                      title: "1 — Fluxograma AS-IS",
+                      value: editedFlowchart,
+                      onChange: setEditedFlowchart,
+                    },
+                    {
+                      title: "2 — Fluxograma TO-BE (Alterações de Fluxo de Rotina)",
+                      value: editedFlowchartTobeFlow,
+                      onChange: setEditedFlowchartTobeFlow,
+                    },
+                    {
+                      title: "3 — Fluxograma TO-BE (Alterações Sistêmicas)",
+                      value: editedFlowchartTobeSystem,
+                      onChange: setEditedFlowchartTobeSystem,
+                    },
+                  ].map(({ title, value, onChange }) => (
+                    <div key={title} className="space-y-2">
+                      <span className="text-xs font-bold tracking-wider text-slate-500 uppercase font-mono">{title}</span>
+                      <textarea
+                        rows={10}
+                        value={value}
+                        onChange={(e) => onChange(e.target.value)}
+                        className="w-full font-mono text-xs bg-slate-900 text-slate-100 p-4 rounded-xl border focus:outline-none"
+                        placeholder="Escreva seu código Mermaid aqui (ou deixe em branco se não se aplica)..."
+                      />
+                    </div>
+                  ))}
+
                   <div className="flex justify-end gap-2">
                     <button
                       onClick={() => {
                         setEditedFlowchart(document.flowchart_mermaid);
+                        setEditedFlowchartTobeFlow(document.flowchart_tobe_flow_mermaid || "");
+                        setEditedFlowchartTobeSystem(document.flowchart_tobe_system_mermaid || "");
                         setIsEditingFlowchart(false);
                       }}
                       className="text-xs text-slate-500 font-semibold hover:bg-slate-50 py-2 px-4 rounded-lg"
@@ -757,16 +846,55 @@ export default function PopiWorkspace({
                       onClick={handleFlowchartSave}
                       className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg shadow-sm"
                     >
-                      Salvar Código e Compilar
+                      Salvar Códigos e Compilar
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-6">
-                  {/* Visually rendered dynamic SVG Mermaid graph */}
+                  <div className="space-y-8">
+                  {/* 1 — AS-IS */}
                   <div className="space-y-2">
-                    <span className="text-xs font-bold tracking-wider text-slate-400 uppercase font-mono">Renderização Geral do Fluxograma</span>
-                    <MermaidRenderer chartCode={editedFlowchart} />
+                    <div>
+                      <span className="text-xs font-bold tracking-wider text-slate-400 uppercase font-mono">1 — Fluxograma AS-IS</span>
+                      <p className="text-[11px] text-slate-500">Como o processo funciona hoje.</p>
+                    </div>
+                    <Suspense fallback={<PageLoading label="Carregando fluxograma..." />}>
+                      <MermaidRenderer chartCode={editedFlowchart} />
+                    </Suspense>
+                  </div>
+
+                  {/* 2 — TO-BE fluxo de rotina */}
+                  <div className="space-y-2 border-t pt-5">
+                    <div>
+                      <span className="text-xs font-bold tracking-wider text-slate-400 uppercase font-mono">2 — Fluxograma TO-BE (Alterações de Fluxo de Rotina)</span>
+                      <p className="text-[11px] text-slate-500">Novo fluxo proposto com melhorias de organização do trabalho, sem depender de novos sistemas.</p>
+                    </div>
+                    {editedFlowchartTobeFlow.trim() ? (
+                      <Suspense fallback={<PageLoading label="Carregando fluxograma..." />}>
+                        <MermaidRenderer chartCode={editedFlowchartTobeFlow} />
+                      </Suspense>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic bg-slate-50 border border-slate-100 rounded-lg p-4">
+                        Nenhuma alteração de fluxo de rotina sugerida. Gere o POPI com I.A. ou adicione manualmente em "Editar Código Mermaid".
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 3 — TO-BE sistêmico */}
+                  <div className="space-y-2 border-t pt-5">
+                    <div>
+                      <span className="text-xs font-bold tracking-wider text-slate-400 uppercase font-mono">3 — Fluxograma TO-BE (Alterações Sistêmicas)</span>
+                      <p className="text-[11px] text-slate-500">Novo fluxo proposto considerando automações, integrações entre sistemas e tecnologia.</p>
+                    </div>
+                    {editedFlowchartTobeSystem.trim() ? (
+                      <Suspense fallback={<PageLoading label="Carregando fluxograma..." />}>
+                        <MermaidRenderer chartCode={editedFlowchartTobeSystem} />
+                      </Suspense>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic bg-slate-50 border border-slate-100 rounded-lg p-4">
+                        Nenhuma alteração sistêmica sugerida. Gere o POPI com I.A. ou adicione manualmente em "Editar Código Mermaid".
+                      </p>
+                    )}
                   </div>
 
                   <div className="border-t pt-5">
@@ -812,16 +940,19 @@ export default function PopiWorkspace({
                 <h2 className="text-base font-bold text-slate-800">Versões Registradas</h2>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-500 font-bold">Comparar com:</span>
-                  <select
+                  <SearchableSelect
                     value={compareVersionId}
-                    onChange={(e) => handleCompare(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg text-xs h-8 px-2"
-                  >
-                    <option value="">Selecione...</option>
-                    {versions.map((v) => (
-                      <option key={v.id} value={v.id}>Versão #{v.version_number} ({v.change_type.toUpperCase()})</option>
-                    ))}
-                  </select>
+                    onChange={handleCompare}
+                    topOptions={[{ value: "", label: "Selecione..." }]}
+                    options={versions.map((v) => ({
+                      value: v.id,
+                      label: `Versão #${v.version_number} (${v.change_type.toUpperCase()})`,
+                    }))}
+                    sort={false}
+                    searchPlaceholder="Pesquisar versão..."
+                    className="w-56"
+                    triggerClassName="w-full bg-slate-50 border border-slate-200 rounded-lg text-xs h-8 px-2"
+                  />
                 </div>
               </div>
 
@@ -951,40 +1082,6 @@ export default function PopiWorkspace({
               )}
             </div>
           )}
-        </div>
-
-        {/* AI Command Box Sidebar */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900 p-5 rounded-2xl text-slate-100 shadow-sm border border-slate-800 space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-1.5 font-mono">
-              <Terminal className="w-4 h-4" />
-              Agente de Revisão IA
-            </h3>
-            <p className="text-xs text-slate-400">
-              Comande qualquer alteração ou complemento de conteúdo em estilo chat administrativo. O robô aplica na estrutura perfeita.
-            </p>
-
-            <div className="space-y-2 pt-2">
-              <textarea
-                placeholder="Ex: Altera o POP para incluir telessaúde como passo 4..."
-                value={aiCommand}
-                onChange={(e) => setAiCommand(e.target.value)}
-                disabled={!document || isRunningCommand}
-                className="w-full h-24 font-mono text-[11px] bg-slate-950 text-slate-200 border border-slate-800 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 disabled:opacity-40"
-              />
-
-              <button
-                type="button"
-                onClick={executeAICommand}
-                disabled={!document || isRunningCommand || !aiCommand.trim()}
-                className="w-full inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-lg disabled:opacity-40 transition"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                {isRunningCommand ? "Revisando..." : "Executar Comando"}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Dynamic Overwrite Manual Edits warning modal */}
