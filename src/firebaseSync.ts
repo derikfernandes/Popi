@@ -6,6 +6,17 @@ import {
 import type { User } from 'firebase/auth';
 import { Secretaria, POPI, POPIInput, POPIDocument, POPIClassification, POPIVersion, UserProfile } from './types';
 import { handleFirestoreError, OperationType } from './firebaseErrors';
+import { DEFAULT_PROMPTS } from './constants/defaultPrompts';
+
+const PROMPT_METADATA_KEYS = new Set(['updated_at', 'updated_by']);
+
+export function buildDefaultPromptsMap(): Record<string, string> {
+  const initial: Record<string, string> = {};
+  DEFAULT_PROMPTS.forEach((p) => {
+    initial[p.id] = p.defaultTemplate;
+  });
+  return initial;
+}
 
 const POPI_SUBCOLLECTIONS = ['inputs', 'documents', 'classifications', 'versions'] as const;
 
@@ -350,17 +361,44 @@ export async function updateUserProfileAccess(
   }
 }
 
-// --- CUSTOM PROMPTS VINCULATED TO USER ---
-export async function saveCustomPromptsToFirestore(userId: string, prompts: Record<string, string>): Promise<void> {
-  const path = `users/${userId}/prompts/current`;
+// --- GLOBAL PROMPTS (admin define; todos os usuários consomem) ---
+export async function saveGlobalPromptsToFirestore(
+  prompts: Record<string, string>,
+  updatedBy?: string
+): Promise<void> {
+  const path = 'settings/prompts';
   try {
-    await setDoc(doc(db, 'users', userId, 'prompts', 'current'), prompts);
+    await setDoc(doc(db, 'settings', 'prompts'), {
+      ...prompts,
+      updated_at: new Date().toISOString(),
+      ...(updatedBy ? { updated_by: updatedBy } : {}),
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
 
-export async function loadCustomPromptsFromFirestore(userId: string): Promise<Record<string, string> | null> {
+export async function loadGlobalPromptsFromFirestore(): Promise<Record<string, string> | null> {
+  const path = 'settings/prompts';
+  try {
+    const docSnap = await getDoc(doc(db, 'settings', 'prompts'));
+    if (!docSnap.exists()) return null;
+
+    const prompts: Record<string, string> = {};
+    for (const [key, value] of Object.entries(docSnap.data())) {
+      if (!PROMPT_METADATA_KEYS.has(key) && typeof value === 'string') {
+        prompts[key] = value;
+      }
+    }
+    return Object.keys(prompts).length > 0 ? prompts : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+}
+
+/** Legado: prompts por usuário (migração única para settings/prompts). */
+export async function loadLegacyUserPromptsFromFirestore(userId: string): Promise<Record<string, string> | null> {
   const path = `users/${userId}/prompts/current`;
   try {
     const docSnap = await getDoc(doc(db, 'users', userId, 'prompts', 'current'));
