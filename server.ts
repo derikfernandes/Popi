@@ -1,9 +1,9 @@
 // Servidor de desenvolvimento/produção local.
-// As rotas da API vivem em api/_lib/app.ts (compartilhadas com a Vercel).
+// As rotas da API vivem em api/index.ts (compartilhadas com a Vercel).
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import app from "./api/_lib/app";
+import app from "./api/index";
 
 const PORT = 3000;
 
