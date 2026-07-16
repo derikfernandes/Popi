@@ -4,7 +4,10 @@ import type {
   ImportPopResponse,
 } from "../services/popiApi";
 
-export const IMPORT_POP_MAX_BYTES = 15 * 1024 * 1024;
+// Limite alinhado à Vercel (~4,5 MB no body HTTP). Em base64 o arquivo
+// cresce ~33%, então o tamanho bruto seguro fica em ~3 MB.
+export const IMPORT_POP_MAX_BYTES = 3 * 1024 * 1024;
+export const IMPORT_POP_MAX_LABEL = "3 MB";
 export const PDF_MIME = "application/pdf";
 export const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

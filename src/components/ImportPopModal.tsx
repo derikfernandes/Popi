@@ -15,6 +15,7 @@ import {
   fileToBase64,
   getImportMimeType,
   IMPORT_POP_MAX_BYTES,
+  IMPORT_POP_MAX_LABEL,
 } from "../utils/importPop";
 import SearchableSelect from "./SearchableSelect";
 
@@ -61,7 +62,7 @@ export default function ImportPopModal({
     }
     if (selected.size > IMPORT_POP_MAX_BYTES) {
       setFile(null);
-      setError("O arquivo excede o limite de 15 MB.");
+      setError(`O arquivo excede o limite de ${IMPORT_POP_MAX_LABEL}.`);
       return;
     }
     setFile(selected);
@@ -183,7 +184,7 @@ export default function ImportPopModal({
                     Selecione um PDF ou Word
                   </span>
                   <span className="mt-1 text-xs text-slate-500">
-                    PDF com texto ou escaneado e Word .docx · até 15 MB
+                    PDF com texto ou escaneado e Word .docx · até {IMPORT_POP_MAX_LABEL}
                   </span>
                 </>
               )}
