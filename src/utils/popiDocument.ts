@@ -1,6 +1,20 @@
 import type { POPIDocument } from "../types";
 import { sanitizeMermaidFlowchart } from "./sanitizeMermaid";
 
+/** Documento vazio seguro para snapshots/Firestore (evita `undefined` no setDoc). */
+export function emptyPopiDocument(): POPIDocument {
+  return {
+    pop_markdown: "",
+    intelligent_report_markdown: "",
+    flowchart_mermaid: "",
+    flowchart_tobe_flow_mermaid: "",
+    flowchart_tobe_system_mermaid: "",
+    final_markdown: "",
+    last_generated_at: null,
+    last_manual_edit_at: null,
+  };
+}
+
 export interface ParsedPopiMarkdown {
   popMarkdown: string;
   reportMarkdown: string;

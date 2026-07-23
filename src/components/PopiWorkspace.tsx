@@ -319,16 +319,38 @@ export default function PopiWorkspace({
           )}
 
           {/* Workflow Status Controls */}
-          {popi.status !== "aprovado" && popi.status !== "arquivado" && (
+          {popi.status === "em_revisao" && (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg py-1.5 px-3">
+                <Check className="w-3.5 h-3.5" /> Em Revisão
+              </span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => onUpdateStatus(popi.id, "aprovado")}
+                  className="text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1.5 rounded-lg transition"
+                >
+                  Aprovar
+                </button>
+              )}
+            </div>
+          )}
+
+          {popi.status !== "aprovado" &&
+            popi.status !== "arquivado" &&
+            popi.status !== "em_revisao" && (
             <div className="flex items-center gap-1 border border-slate-200 p-0.5 rounded-lg bg-slate-50">
               <button
+                type="button"
                 onClick={() => onUpdateStatus(popi.id, "em_revisao")}
-                className="text-[11px] font-bold text-purple-700 hover:bg-purple-50 px-2 py-1.5 rounded transition"
+                title="Enviar para revisão"
+                className="text-[11px] font-bold text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 px-2.5 py-1.5 rounded transition"
               >
                 Revisão
               </button>
               {isAdmin && (
                 <button
+                  type="button"
                   onClick={() => onUpdateStatus(popi.id, "aprovado")}
                   className="text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1.5 rounded transition"
                 >
@@ -339,9 +361,21 @@ export default function PopiWorkspace({
           )}
 
           {popi.status === "aprovado" && (
-            <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg py-1.5 px-3">
-              <Check className="w-4 h-4" /> POPI Aprovado
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg py-1.5 px-3">
+                <Check className="w-4 h-4" /> POPI Aprovado
+              </span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => onUpdateStatus(popi.id, "em_revisao")}
+                  title="Reabrir POPI para nova revisão"
+                  className="text-[11px] font-bold text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 px-2.5 py-1.5 rounded-lg transition"
+                >
+                  Voltar para revisão
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
