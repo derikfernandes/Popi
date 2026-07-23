@@ -58,7 +58,10 @@ import {
   filterPopisForUser,
 } from "../permissions";
 import { generateSequentialNumberAndReportNumber } from "../utils/sequentialNumber";
-import { buildDocumentFromGeneration } from "../utils/popiDocument";
+import {
+  buildDocumentFromGeneration,
+  emptyPopiDocument,
+} from "../utils/popiDocument";
 import {
   generatePopiDocumentDeduped,
   runPopiQa,
@@ -72,6 +75,30 @@ const PROMPTS_CACHE_KEY = "global-prompts";
 const SECRETARIAS_TTL_MS = 5 * 60 * 1000;
 const PROMPTS_TTL_MS = 10 * 60 * 1000;
 const ORPHAN_PURGE_SESSION_KEY = "popi_orphan_purged";
+
+const EMPTY_POPI_INPUT: POPIInput = {
+  role_or_position: "",
+  routine_name: "",
+  routine_goal: "",
+  routine_type: "Rotina interna",
+  routine_type_detail: "",
+  start_trigger: "",
+  frequency: "",
+  frequency_detail: "",
+  participants: [],
+  participants_free: "",
+  norma_orientadora: "",
+  passo_a_passo: [],
+  passo_a_passo_free: "",
+  sistemas_documentos_utilizados: "",
+  informacoes_indispensaveis: "",
+  tempo_medio: "",
+  gargalos_dificuldades: "",
+  melhorias_automacoes_sugeridas: "",
+  metas_indicadores: [],
+  metas_indicadores_free: "",
+  additional_notes: null,
+};
 
 function mergeDefaultPrompts(
   stored: Record<string, string> | null
@@ -553,16 +580,7 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         snapshot: {
           popi: popiObj,
           input: formInputs,
-          document: documents[targetId] || {
-            pop_markdown: "",
-            intelligent_report_markdown: "",
-            flowchart_mermaid: "",
-            flowchart_tobe_flow_mermaid: "",
-            flowchart_tobe_system_mermaid: "",
-            final_markdown: "",
-            last_generated_at: null,
-            last_manual_edit_at: null,
-          },
+          document: documents[targetId] ?? emptyPopiDocument(),
           classification: classifications[targetId] || null,
         },
         note: isNew
@@ -613,7 +631,11 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
               ...p,
               status,
               approved_at:
-                status === "aprovado" ? new Date().toISOString() : p.approved_at,
+                status === "aprovado"
+                  ? new Date().toISOString()
+                  : status === "em_revisao"
+                    ? null
+                    : p.approved_at,
               updated_at: new Date().toISOString(),
             };
             return targetPopiObj;
@@ -635,8 +657,9 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
           changed_fields: ["status"],
           snapshot: {
             popi: targetPopiObj,
-            input: inputs[id],
-            document: documents[id],
+            input: inputs[id] ?? EMPTY_POPI_INPUT,
+            // Sem documento gerado ainda, Firestore rejeita `undefined` — usar vazio.
+            document: documents[id] ?? emptyPopiDocument(),
             classification: classifications[id] || null,
           },
           note: `Documentação alterada para status de ${status.toUpperCase()}.`,
@@ -785,7 +808,7 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
           changed_fields: ["document"],
           snapshot: {
             popi: snapPopi,
-            input: inputs[id],
+            input: inputs[id] ?? EMPTY_POPI_INPUT,
             document: updatedDoc,
             classification: classifications[id] || null,
           },
