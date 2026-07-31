@@ -243,6 +243,8 @@ export const INITIAL_POPIS: POPI[] = [
     routine_category: "Atendimento ao cidadão",
     improvement_categories: ["Integração entre sistemas", "Redução de retrabalho", "Uso potencial de IA"],
     created_by: "user-system",
+    created_by_email: "sistema@popi.local",
+    created_by_name: "Sistema POPI",
     updated_by: "user-system",
     created_at: "2026-06-01T14:30:00Z",
     updated_at: "2026-06-07T10:00:00Z",
@@ -263,6 +265,8 @@ export const INITIAL_POPIS: POPI[] = [
     routine_category: "Processo de gestão",
     improvement_categories: ["Padronização de procedimento", "Melhoria de controle interno"],
     created_by: "user-system",
+    created_by_email: "sistema@popi.local",
+    created_by_name: "Sistema POPI",
     updated_by: "user-system",
     created_at: "2026-06-05T09:15:00Z",
     updated_at: "2026-06-06T18:40:00Z",
@@ -320,6 +324,7 @@ export const INITIAL_INPUTS: Record<string, POPIInput> = {
       { indicador: "Aproveitamento de vagas", meta: "Mínimo de 96% das cotas diárias agendas", forma_de_medicao: "Vagas ocupadas / total de vagas fornecidas ao dia", fonte_dados: "Relatórios SGA-CROSS", periodicidade: "Semanal" },
     ],
     metas_indicadores_free: "",
+    comprovantes_gerados_armazenamento: "Relatório semanal de aproveitamento de vagas gerado no SGA-CROSS e salvo na pasta compartilhada da Central de Agendamentos.",
     additional_notes: "",
   },
   "popi-2": {
@@ -349,6 +354,7 @@ export const INITIAL_INPUTS: Record<string, POPIInput> = {
     melhorias_automacoes_sugeridas: "Disponibilização de templates inteligentes e checklist integrado e validado eletronicamente no envio, diminuindo erros materiais.",
     metas_indicadores: [],
     metas_indicadores_free: "",
+    comprovantes_gerados_armazenamento: "Processo licitatório protocolado no 1Doc com minuta de edital e anexos; cópia de controle salva na pasta do setor de Compras.",
     additional_notes: "",
   },
 };
@@ -413,6 +419,7 @@ Constatou-se uma grave ineficiência operacional decorrente de duas causas funda
 | **Nome da Rotina de Trabalho:** | Central de Agendamentos Médicos |
 | **Secretaria / Departamento / Divisão:** | Saúde / Urbam / UTC / Divisão de Especialidades Clínicas |
 | **Responsável pela Rotina:** | Gerente de Atendimento |
+| **Elaborado por:** | Sistema POPI (sistema@popi.local) |
 | **Ano:** | 2026 |
 | **Categoria da Rotina:** | Atendimento ao cidadão |
 
@@ -505,6 +512,7 @@ Excesso de refação decorrente de erros materiais cometidos por proponentes int
 | **Nome da Rotina de Trabalho:** | Abertura de Processos de Licitação |
 | **Secretaria / Departamento / Divisão:** | Gestão / Comissões de Licitatórias / Gerência de Suprimentos |
 | **Responsável pela Rotina:** | Pregoeiro Assistente |
+| **Elaborado por:** | Sistema POPI (sistema@popi.local) |
 | **Ano:** | 2026 |
 | **Categoria da Rotina:** | Processo de gestão |
 

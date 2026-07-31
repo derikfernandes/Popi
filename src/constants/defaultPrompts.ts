@@ -14,7 +14,7 @@ export const DEFAULT_PROMPTS: AIPromptTemplate[] = [
     description: "Analisa o questionário inicial respondido pelo servidor municipal e classifica a atividade em uma categoria administrativa principal, identificando também possíveis frentes de melhoria para o serviço.",
     category: "classification",
     placeholders: [
-      { name: "inputs", description: "Dados estruturados e respostas livres das 16 perguntas do mapeamento." }
+      { name: "inputs", description: "Dados estruturados e respostas livres das 17 perguntas do mapeamento." }
     ],
     defaultTemplate: `Você é um classificador de rotinas administrativas e oportunidades de melhoria em gestão pública.
 Com base nos dados preenchidos pelo usuário, classifique a rotina em uma categoria principal e identifique categorias de melhoria.
@@ -58,7 +58,7 @@ Regras:
   {
     id: "generate-popi",
     name: "Geração Completa do POPI (POP + Relatório TO-BE)",
-    description: "Prompt principal que consolida as 16 perguntas em um Procedimento Operacional Padrão da situação atual (AS-IS) com um fluxograma Mermaid, e desenha o Relatório Geral das melhorias e sugestões estruturadas (TO-BE).",
+    description: "Prompt principal que consolida as 17 perguntas em um Procedimento Operacional Padrão da situação atual (AS-IS) com um fluxograma Mermaid, e desenha o Relatório Geral das melhorias e sugestões estruturadas (TO-BE).",
     category: "generation",
     placeholders: [
       { name: "report_number", description: "ID de registro unificado (ex: POPI-SEC-001/2026)." },
@@ -69,8 +69,12 @@ Regras:
       { name: "year", description: "Ano de competência de mapeamento." },
       { name: "routine_category", description: "Categoria principal identificada." },
       { name: "improvement_categories", description: "Categorias de melhorias mapeadas." },
-      { name: "inputs.secretaria_departamento_divisao", description: "Resposta Q1 (Setor)." },
-      { name: "inputs.cargo_funcao", description: "Resposta Q2 (Cargo/Função)." },
+      { name: "created_by_name", description: "Nome de exibição de quem elaborou o POP no sistema." },
+      { name: "created_by_login", description: "Login (e-mail) de quem elaborou o POP no sistema." },
+      { name: "elaborado_por", description: "Nome e login formatados do elaborador." },
+      { name: "inputs.secretaria_departamento_divisao", description: "Resposta Q1 (Secretaria / Departamento / Divisão), montada a partir dos metadados do POPI." },
+      { name: "inputs.role_or_position", description: "Resposta Q2 (Cargo/Função do responsável pela rotina)." },
+      { name: "inputs.cargo_funcao", description: "Alias legado de inputs.role_or_position (prompts antigos)." },
       { name: "inputs.routine_goal", description: "Resposta Q4 (Objetivo da rotina)." },
       { name: "inputs.routine_type", description: "Resposta Q5 (Atendimento direto ou interno)." },
       { name: "inputs.routine_type_detail", description: "Resposta Q5 complementar." },
@@ -86,17 +90,18 @@ Regras:
       { name: "inputs.gargalos_dificuldades", description: "Resposta Q14 (Gargalos e travas)." },
       { name: "inputs.melhorias_automacoes_sugeridas", description: "Resposta Q15 (Automação proposta)." },
       { name: "inputs.metas_indicadores", description: "Resposta Q16 (Métricas de impacto)." },
+      { name: "inputs.comprovantes_gerados_armazenamento", description: "Resposta Q17 (Comprovantes gerados e local de salvamento)." },
       { name: "current_date", description: "Data de geração no formato pt-BR." }
     ],
     defaultTemplate: `Você é um especialista sênior em gestão pública, controle interno, mapeamento de processos, de Procedimento Operacional Padrão, análise AS-IS/TO-BE, desenho de fluxos, melhoria contínua e automação aplicada ao setor público.
 
-Sua tarefa é gerar um POPI — Procedimento Operativo Padrão Inteligente — a partir de 16 respostas preenchidas pelo usuário no sistema.
+Sua tarefa é gerar um POPI — Procedimento Operativo Padrão Inteligente — a partir de 17 respostas preenchidas pelo usuário no sistema.
 
 O resultado deve ter qualidade equivalente a dois documentos técnicos:
 1. POP AS-IS — Procedimento Operacional Padrão da rotina atual.
 2. Relatório TO-BE — Análise de gargalos e propostas de melhoria.
 
-O sistema deve usar SOMENTE as 16 perguntas de entrada. Não solicite nem dependa de perguntas adicionais.
+O sistema deve usar SOMENTE as 17 perguntas de entrada. Não solicite nem dependa de perguntas adicionais.
 Se faltar informação, registre como lacuna. Não invente.
 
 DADOS DE CONTROLE DO RELATÓRIO:
@@ -107,16 +112,17 @@ Divisão: {{division}}
 Ano: {{year}}
 Categoria da rotina: {{routine_category}}
 Categorias de melhoria: {{improvement_categories}}
+Elaborado por: {{elaborado_por}}
 
-RESPOSTAS DO USUÁRIO — 16 PERGUNTAS:
+RESPOSTAS DO USUÁRIO — 17 PERGUNTAS:
 1. Secretaria / Departamento / Divisão:
 {{inputs.secretaria_departamento_divisao}}
 
 2. Cargo ou função:
-{{inputs.cargo_funcao}}
+{{inputs.role_or_position}}
 
 3. Nome da rotina:
-{{inputs.routine_name}}
+{{routine_name}}
 
 4. Qual o objetivo dessa rotina?
 {{inputs.routine_goal}}
@@ -157,11 +163,14 @@ RESPOSTAS DO USUÁRIO — 16 PERGUNTAS:
 16. Essa rotina tem metas ou indicadores?
 {{inputs.metas_indicadores}}
 
+17. Como forma de comprovar que essa rotina foi executada, quais documentos, relatórios ou comprovantes são gerados e onde eles ficam salvos?
+{{inputs.comprovantes_gerados_armazenamento}}
+
 
 REGRAS OBRIGATÓRIAS:
-1. Use exclusivamente as 16 respostas acima e os dados de controle do relatório.
+1. Use exclusivamente as 17 respostas acima e os dados de controle do relatório.
 2. Não invente informações fictícias. Se algo essencial faltar, registre como "não informado" ou lance como lacuna para posterior entrevista ou validação.
-3. Não cite nomes de pessoas físicas ou servidores específicos. Prefira cargos, funções ou secretarias.
+3. Não cite nomes de pessoas físicas ou servidores específicos no corpo do procedimento. Prefira cargos, funções ou secretarias. A linha "Elaborado por" da identificação pode usar o login/nome do usuário do sistema.
 4. Escreva com linguagem profissional, objetiva e adequada a governos.
 5. Gere um fluxograma AS-IS em Mermaid de forma obrigatória usando flowchart TD (seção 7 da PARTE 1).
 6. Gere DOIS fluxogramas TO-BE em Mermaid usando flowchart TD, em seções separadas da PARTE 2:
@@ -170,6 +179,7 @@ REGRAS OBRIGATÓRIAS:
    Se não houver informação suficiente para algum dos dois, escreva "Sem alterações sugeridas para este cenário." na seção correspondente e NÃO inclua o bloco mermaid dessa seção.
 7. Em nós Mermaid, se o texto contiver parênteses, vírgulas, dois-pontos ou aspas, SEMPRE use aspas duplas no rótulo. Exemplo correto: A["Vaga também no SIRESP (CROSS)"]. Exemplo incorreto: A[Vaga também no SIRESP (CROSS)].
 8. Respeite perfeitamente a estrutura obrigatória definida abaixo.
+9. Na seção 8 — Controle de registros, use prioritariamente a pergunta 17 (comprovantes gerados e local de salvamento), complementarmente às perguntas 10, 11, 12 e 16.
 
 ESTRUTURA OBRIGATÓRIA DA SAÍDA:
 
@@ -180,7 +190,8 @@ ESTRUTURA OBRIGATÓRIA DA SAÍDA:
 | **Número do Relatório:** | {{report_number}} |
 | **Nome da Rotina de Trabalho:** | {{routine_name}} |
 | **Secretaria / Departamento / Divisão:** | {{secretaria_name}} / {{department}} / {{division}} |
-| **Responsável pela Rotina:** | {{inputs.cargo_funcao}} |
+| **Responsável pela Rotina:** | {{inputs.role_or_position}} |
+| **Elaborado por:** | {{elaborado_por}} |
 | **Ano:** | {{year}} |
 | **Categoria da Rotina:** | {{routine_category}} |
 
@@ -223,7 +234,7 @@ flowchart TD
 \`\`\`
 
 ## 8 — Controle de registros
-[Tabela com os registros e status técnicos]
+[Tabela com os registros e status técnicos. Use prioritariamente a pergunta 17; complemente com 10, 11, 12 e 16. Quando faltar armazenamento, proteção, retenção ou disposição, use "não informado".]
 
 ## 9 — Controle de revisões
 | Data da Revisão | Número da Revisão | Melhoria Implementada |
@@ -313,8 +324,9 @@ Regras obrigatórias:
 8. Crie uma lacuna para cada assunto relevante do questionário que não tenha sido localizado.
 9. Para participantes, passo a passo e metas/indicadores, registre uma única lacuna no campo principal; não duplique a lacuna no respectivo campo de texto livre.
 10. Em "gaps.field", use somente o nome direto do campo, sem prefixos como "inputs." ou "meta.".
-11. O nível de confiança deve ser "baixo", "médio" ou "alto".
-12. Retorne somente o JSON solicitado pelo schema.`
+11. Extraia para "comprovantes_gerados_armazenamento" documentos, relatórios ou comprovantes gerados e onde ficam salvos; se não houver, string vazia e lacuna.
+12. O nível de confiança deve ser "baixo", "médio" ou "alto".
+13. Retorne somente o JSON solicitado pelo schema.`
   },
   {
     id: "normalize-inputs",
@@ -322,7 +334,7 @@ Regras obrigatórias:
     description: "Interpreta os campos abertos preenchidos manualmente pelo servidor municipal (Q8 Participantes, Q10 Passo a passo, Q16 Metas) e formata esses textos em tabelas e estruturas altamente organizadas de forma JSON uniforme.",
     category: "normalization",
     placeholders: [
-      { name: "inputs", description: "Estrutura crua contendo todas as respostas declaradas pelo usuário no formulário de 16 perguntas." }
+      { name: "inputs", description: "Estrutura crua contendo todas as respostas declaradas pelo usuário no formulário de 17 perguntas." }
     ],
     defaultTemplate: `Você é um especialista em mapeamento de processos públicos, desenho de fluxos e criação de POPI.
 Sua tarefa é receber as respostas preenchidas pelo usuário no sistema e transformar em um JSON limpo e padronizado contendo participantes, passo a passo e metas estructurados.
@@ -341,7 +353,7 @@ Retorne estritamente um JSON no seguinte formato:`
   {
     id: "qa-popi",
     name: "Revisão e Auditoria de Qualidade (QA)",
-    description: "Revisor adversarial responsável por auditar o rascunho em relação às 16 perguntas respondidas pelo usuário para identificar pontos de incoerência, possíveis invenções de dados fictícios ou vazamento de dados de privacidade civil.",
+    description: "Revisor adversarial responsável por auditar o rascunho em relação às 17 perguntas respondidas pelo usuário para identificar pontos de incoerência, possíveis invenções de dados fictícios ou vazamento de dados de privacidade civil.",
     category: "qa",
     placeholders: [
       { name: "documentMarkdown", description: "Todo o documento técnico markdown (inclusive o fluxograma Mermaid) compilado sob análise." },

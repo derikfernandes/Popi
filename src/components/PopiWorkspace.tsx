@@ -1,4 +1,4 @@
-import React, { useState, Suspense, lazy, useRef } from "react";
+import React, { useState, Suspense, lazy, useRef, useDeferredValue } from "react";
 import { POPI, POPIInput, POPIDocument, POPIClassification, POPIVersion, Participant, PassoAPasso } from "../types";
 import { 
   ArrowLeft, Sparkles, FileText, FileCode, GitBranch, ShieldCheck, 
@@ -9,6 +9,7 @@ import type { QaPopiResponse } from "../services/popiApi";
 import PageLoading from "./PageLoading";
 import ExportOptionsPanel from "./ExportOptionsPanel";
 import MarkdownDocument from "./MarkdownDocument";
+import RichMarkdownEditor from "./RichMarkdownEditor";
 import SearchableSelect from "./SearchableSelect";
 import { exportPopiDocument, type ExportFormat } from "../utils/exportPopi";
 import {
@@ -41,6 +42,57 @@ interface PopiWorkspaceProps {
   ) => void;
   onSuggestClassification: (id: string) => Promise<void>;
   onSaveClassification: (id: string, category: string, improvements: string[]) => void;
+}
+
+function FlowchartEditPanel({
+  title,
+  value,
+  onChange,
+}: {
+  title: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const deferredPreview = useDeferredValue(value);
+
+  return (
+    <div className="space-y-2 border border-slate-100 rounded-xl overflow-hidden">
+      <div className="bg-slate-50 px-3 py-2 border-b border-slate-100">
+        <span className="text-xs font-bold tracking-wider text-slate-600 uppercase">
+          {title}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
+        <div className="p-3 space-y-2">
+          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+            Código
+          </span>
+          <textarea
+            rows={10}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full font-mono text-xs bg-slate-50 text-slate-800 p-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 leading-relaxed"
+            placeholder={"flowchart TD\n  A[Início] --> B[Etapa]"}
+            spellCheck={false}
+          />
+        </div>
+        <div className="p-3 space-y-2 bg-white">
+          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+            Prévia
+          </span>
+          {deferredPreview.trim() ? (
+            <Suspense fallback={<PageLoading label="Atualizando prévia..." />}>
+              <MermaidRenderer chartCode={deferredPreview} />
+            </Suspense>
+          ) : (
+            <p className="text-xs text-slate-400 italic bg-slate-50 border border-dashed border-slate-200 rounded-lg p-4">
+              Sem conteúdo para pré-visualizar.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PopiWorkspace({
@@ -154,7 +206,9 @@ export default function PopiWorkspace({
       await onGeneratePOPI(popi.id);
       setActiveTab("pop");
     } catch {
-      alert("Não foi possível gerar o POPI. Tente preencher mais campos do questionário.");
+      alert(
+        "Não foi possível classificar e gerar o POPI. Tente preencher mais campos do questionário e tente novamente."
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -281,7 +335,7 @@ export default function PopiWorkspace({
               className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 font-bold text-xs text-white h-9 px-4 rounded-lg shadow-sm transition disabled:opacity-50"
             >
               <Sparkles className="w-4 h-4" />
-              {isGenerating ? "Gerando POPI..." : "Gerar POPI com I.A."}
+              {isGenerating ? "Classificando e gerando..." : "Gerar POPI com I.A."}
             </button>
           )}
 
@@ -383,7 +437,7 @@ export default function PopiWorkspace({
       {/* Tabs list */}
       <div className="flex overflow-x-auto border-b border-slate-200 pb-px gap-1">
         {[
-          { id: "input", label: "Mapeamento (16p)" },
+          { id: "input", label: "Mapeamento (17p)" },
           { id: "class", label: "Classificação" },
           { id: "pop", label: "Procedimento (POP)", condition: !!document },
           { id: "report", label: "Diagnóstico", condition: !!document },
@@ -417,7 +471,7 @@ export default function PopiWorkspace({
             <div>
               <h4 className="text-sm font-extrabold text-amber-900">Mapeamento de dados modificado</h4>
               <p className="text-xs text-amber-800 mt-1 max-w-2xl leading-relaxed">
-                As 16 perguntas foram editadas após a última geração por IA. O POP, o Relatório TO-BE e o Fluxograma podem estar desatualizados em relação aos novos dados preenchidos.
+                As 17 perguntas foram editadas após a última geração por IA. O POP, o Relatório TO-BE e o Fluxograma podem estar desatualizados em relação aos novos dados preenchidos.
               </p>
             </div>
           </div>
@@ -428,7 +482,7 @@ export default function PopiWorkspace({
               className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg shadow-xs transition inline-flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              {isGenerating ? "Regerando..." : "Regerar agora com IA"}
+              {isGenerating ? "Classificando e regerando..." : "Regerar agora com IA"}
             </button>
           </div>
         </div>
@@ -449,6 +503,16 @@ export default function PopiWorkspace({
                 <div className="bg-slate-50/75 rounded-xl p-4.5">
                   <span className="text-[10px] uppercase font-extrabold text-slate-400">Q2. Cargo do Responsável</span>
                   <p className="font-bold text-slate-800 mt-1">{inputs.role_or_position}</p>
+                </div>
+
+                <div className="bg-slate-50/75 rounded-xl p-4.5">
+                  <span className="text-[10px] uppercase font-extrabold text-slate-400">Elaborado por</span>
+                  <p className="font-bold text-slate-800 mt-1">
+                    {popi.created_by_name || "Não informado"}
+                  </p>
+                  {popi.created_by_email && (
+                    <p className="text-xs text-slate-500 mt-0.5">{popi.created_by_email}</p>
+                  )}
                 </div>
 
                 <div className="md:col-span-2 bg-slate-50/75 rounded-xl p-4.5">
@@ -596,6 +660,13 @@ export default function PopiWorkspace({
                     <p className="text-slate-400 italic text-xs">Não há indicadores formais mapeados</p>
                   )}
                 </div>
+
+                <div className="md:col-span-2 bg-slate-50/75 rounded-xl p-4.5">
+                  <span className="text-[10px] uppercase font-extrabold text-slate-400">Q17. Comprovantes Gerados e Local de Salvamento</span>
+                  <p className="font-bold text-slate-800 mt-1 whitespace-pre-line">
+                    {inputs.comprovantes_gerados_armazenamento || "Não preenchido"}
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -606,7 +677,7 @@ export default function PopiWorkspace({
                 <div>
                   <h2 className="text-base font-bold text-slate-800">Classificação da rotina</h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Defina o tipo da rotina (AS-IS) e as oportunidades de melhoria (TO-BE).
+                    Ao gerar o POPI, a classificação é feita automaticamente pela I.A. Use esta aba para revisar, ajustar ou sugerir de novo.
                   </p>
                 </div>
                 <button
@@ -741,15 +812,21 @@ export default function PopiWorkspace({
 
               {isEditing ? (
                 <div className="space-y-4">
-                  <textarea
-                    rows={16}
+                  <p className="text-xs text-slate-500">
+                    Edite o documento como em um editor de texto. Use a aba Markdown apenas se precisar ajustar o código-fonte.
+                  </p>
+                  <RichMarkdownEditor
                     value={editedPop}
-                    onChange={(e) => setEditedPop(e.target.value)}
-                    className="w-full font-mono text-xs bg-slate-900 text-slate-100 p-4 rounded-xl border focus:outline-none"
+                    onChange={setEditedPop}
+                    placeholder="Edite o POP AS-IS…"
                   />
                   <div className="flex justify-end gap-2">
                     <button
-                      onClick={() => setIsEditing(false)}
+                      onClick={() => {
+                        setEditedPop(document.pop_markdown);
+                        setEditedReport(document.intelligent_report_markdown);
+                        setIsEditing(false);
+                      }}
                       className="text-xs text-slate-500 font-semibold hover:bg-slate-50 py-2 px-4 rounded-lg"
                     >
                       Cancelar
@@ -783,15 +860,21 @@ export default function PopiWorkspace({
 
               {isEditing ? (
                 <div className="space-y-4">
-                  <textarea
-                    rows={16}
+                  <p className="text-xs text-slate-500">
+                    Edite o diagnóstico com formatação visual. O conteúdo continua sendo salvo em Markdown.
+                  </p>
+                  <RichMarkdownEditor
                     value={editedReport}
-                    onChange={(e) => setEditedReport(e.target.value)}
-                    className="w-full font-mono text-xs bg-slate-900 text-slate-100 p-4 rounded-xl border focus:outline-none"
+                    onChange={setEditedReport}
+                    placeholder="Edite o relatório TO-BE…"
                   />
                   <div className="flex justify-end gap-2">
                     <button
-                      onClick={() => setIsEditing(false)}
+                      onClick={() => {
+                        setEditedPop(document.pop_markdown);
+                        setEditedReport(document.intelligent_report_markdown);
+                        setIsEditing(false);
+                      }}
                       className="text-xs text-slate-500 font-semibold hover:bg-slate-50 py-2 px-4 rounded-lg"
                     >
                       Cancelar
@@ -825,14 +908,14 @@ export default function PopiWorkspace({
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 border border-slate-200 rounded-lg transition"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
-                  {isEditingFlowchart ? "Visualizar Gráficos" : "Editar Código Mermaid"}
+                  {isEditingFlowchart ? "Visualizar Gráficos" : "Editar Fluxogramas"}
                 </button>
               </div>
 
               {isEditingFlowchart ? (
                 <div className="space-y-5">
-                  <div className="bg-amber-50 border border-amber-200/50 p-3 rounded-lg text-xs text-amber-800 leading-relaxed font-semibold">
-                    Dica: O código abaixo utiliza a sintaxe Mermaid. Certifique-se de que os nós de fluxo e as setas (ex: A -- Sim --&gt; B) estejam logicamente encadeados e fechados corretamente para compilação. Deixe em branco os fluxogramas TO-BE que não se aplicam.
+                  <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg text-xs text-blue-900 leading-relaxed">
+                    Edite o código Mermaid à esquerda e acompanhe a prévia à direita. Deixe em branco os fluxogramas TO-BE que não se aplicam.
                   </div>
 
                   {[
@@ -852,16 +935,12 @@ export default function PopiWorkspace({
                       onChange: setEditedFlowchartTobeSystem,
                     },
                   ].map(({ title, value, onChange }) => (
-                    <div key={title} className="space-y-2">
-                      <span className="text-xs font-bold tracking-wider text-slate-500 uppercase font-mono">{title}</span>
-                      <textarea
-                        rows={10}
-                        value={value}
-                        onChange={(e) => onChange(e.target.value)}
-                        className="w-full font-mono text-xs bg-slate-900 text-slate-100 p-4 rounded-xl border focus:outline-none"
-                        placeholder="Escreva seu código Mermaid aqui (ou deixe em branco se não se aplica)..."
-                      />
-                    </div>
+                    <FlowchartEditPanel
+                      key={title}
+                      title={title}
+                      value={value}
+                      onChange={onChange}
+                    />
                   ))}
 
                   <div className="flex justify-end gap-2">
@@ -880,7 +959,7 @@ export default function PopiWorkspace({
                       onClick={handleFlowchartSave}
                       className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg shadow-sm"
                     >
-                      Salvar Códigos e Compilar
+                      Salvar e Compilar
                     </button>
                   </div>
                 </div>
@@ -1002,15 +1081,23 @@ export default function PopiWorkspace({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-                    <div className="bg-slate-950 text-slate-100 p-4 rounded-lg overflow-y-auto max-h-[300px]">
-                      <p className="border-b border-slate-800 pb-2 mb-2 font-bold font-sans text-slate-400">Versão Anterior Snapshot POP:</p>
-                      <pre className="whitespace-pre-wrap">{compareResult.doc?.pop_markdown || "Vazio"}</pre>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    <div className="bg-slate-50 text-slate-800 border border-slate-200 p-4 rounded-lg overflow-y-auto max-h-[300px]">
+                      <p className="border-b border-slate-200 pb-2 mb-2 font-bold text-slate-500">
+                        Versão Anterior — POP
+                      </p>
+                      <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
+                        {compareResult.doc?.pop_markdown || "Vazio"}
+                      </pre>
                     </div>
 
-                    <div className="bg-slate-900 text-slate-100 p-4 rounded-lg overflow-y-auto max-h-[300px]">
-                      <p className="border-b border-slate-800 pb-2 mb-2 font-bold font-sans text-slate-400">Versão Atual POP:</p>
-                      <pre className="whitespace-pre-wrap">{document?.pop_markdown || "Vazio"}</pre>
+                    <div className="bg-white text-slate-800 border border-slate-200 p-4 rounded-lg overflow-y-auto max-h-[300px]">
+                      <p className="border-b border-slate-200 pb-2 mb-2 font-bold text-slate-500">
+                        Versão Atual — POP
+                      </p>
+                      <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
+                        {document?.pop_markdown || "Vazio"}
+                      </pre>
                     </div>
                   </div>
                 </div>

@@ -50,6 +50,7 @@ export interface POPIInput {
   melhorias_automacoes_sugeridas: string;
   metas_indicadores: MetaIndicador[];
   metas_indicadores_free: string;
+  comprovantes_gerados_armazenamento: string;
   additional_notes: string | null;
 }
 
@@ -96,6 +97,10 @@ export interface POPI {
   routine_category: string;
   improvement_categories: string[];
   created_by: string;
+  /** E-mail (login) de quem criou o POPI — legível sem lookup de perfil. */
+  created_by_email?: string;
+  /** Nome de exibição de quem criou o POPI. */
+  created_by_name?: string;
   updated_by: string;
   created_at: string;
   updated_at: string;

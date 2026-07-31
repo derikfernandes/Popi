@@ -178,6 +178,7 @@ Body:
   "bottlenecks": "Exportação de listas e controles paralelos.",
   "improvement_ideas": "Integração por APIs.",
   "indicators": "Ocupação mínima de 95% das vagas.",
+  "comprovantes_gerados_armazenamento": "Relatório diário de ocupação salvo na pasta compartilhada da Central e no sistema Agenda Saúde.",
   "additional_notes": null
 }
 ```

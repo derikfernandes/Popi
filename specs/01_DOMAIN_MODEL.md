@@ -86,13 +86,13 @@ Regra: o usuário poderá editar o POPI a qualquer momento, inclusive após gera
 
 ## 6. POPIInput
 
-Representa as 16 respostas preenchidas pelo usuário no roteiro interno.
+Representa as 17 respostas preenchidas pelo usuário no roteiro interno.
 
 Regra de produto:
 
-> O formulário inicial deve conter somente 16 perguntas. Não criar perguntas adicionais para entradas, saídas, decisões ou exceções. Esses elementos devem ser extraídos pela IA a partir das respostas, especialmente do passo a passo, dos gargalos e das melhorias sugeridas.
+> O formulário inicial deve conter somente 17 perguntas. Não criar perguntas adicionais para entradas, saídas, decisões ou exceções. Esses elementos devem ser extraídos pela IA a partir das respostas, especialmente do passo a passo, dos gargalos e das melhorias sugeridas.
 
-### Campos derivados das 16 perguntas originais
+### Campos derivados das 17 perguntas do roteiro
 
 | Nº | Campo técnico | Tipo | Pergunta de origem | Descrição |
 |---|---|---|---|---|
@@ -112,6 +112,7 @@ Regra de produto:
 | 14 | bottlenecks | text | Onde acontecem os maiores atrasos ou dificuldades? | Gargalos e problemas enfrentados. |
 | 15 | improvement_ideas | text | O que poderia ser automatizado, simplificado ou melhorado? | Ideias de melhoria, automação ou redução de retrabalho. Base principal do TO-BE. |
 | 16 | indicators | text/json | Essa rotina tem metas ou indicadores? | Metas, indicadores e forma de medição. |
+| 17 | comprovantes_gerados_armazenamento | text | Documentos/comprovantes gerados e onde ficam salvos? | Evidências da execução da rotina e local de armazenamento. |
 
 ### Estrutura recomendada para participantes
 
@@ -245,5 +246,5 @@ Controla a numeração por secretaria e ano.
 6. A IA não pode sobrescrever edição manual sem confirmação.
 7. O documento gerado deve registrar lacunas quando faltar informação.
 8. O número do relatório só pode ser alterado por usuário autorizado.
-9. O formulário interno deve incluir exatamente as 16 perguntas originais do roteiro.
-10. O desenho de fluxos deve ser elaborado pela IA a partir das 16 respostas, sem criar perguntas extras.
+9. O formulário interno deve incluir exatamente as 17 perguntas do roteiro.
+10. O desenho de fluxos deve ser elaborado pela IA a partir das 17 respostas, sem criar perguntas extras.

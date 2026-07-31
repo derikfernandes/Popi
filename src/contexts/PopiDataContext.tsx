@@ -97,6 +97,7 @@ const EMPTY_POPI_INPUT: POPIInput = {
   melhorias_automacoes_sugeridas: "",
   metas_indicadores: [],
   metas_indicadores_free: "",
+  comprovantes_gerados_armazenamento: "",
   additional_notes: null,
 };
 
@@ -538,6 +539,14 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         seqNo = existing?.sequential_number || 1;
       }
 
+      const existing = !isNew
+        ? popis.find((p) => p.id === targetId)
+        : undefined;
+      const creatorUid = currentUser ? currentUser.uid : "user-current";
+      const creatorEmail = currentUser?.email || "";
+      const creatorName =
+        currentUser?.displayName || currentUser?.email || "Servidor Municipal";
+
       const popiObj: POPI = {
         id: targetId,
         report_number: reportNumber,
@@ -549,14 +558,19 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         department: meta.department,
         division: meta.division,
         status: "rascunho",
-        routine_category: "",
-        improvement_categories: [],
-        created_by: currentUser ? currentUser.uid : "user-current",
-        updated_by: currentUser ? currentUser.uid : "user-current",
+        routine_category: existing?.routine_category || "",
+        improvement_categories: existing?.improvement_categories || [],
+        created_by: existing?.created_by || creatorUid,
+        created_by_email: isNew
+          ? creatorEmail
+          : existing?.created_by_email || "",
+        created_by_name: isNew
+          ? creatorName
+          : existing?.created_by_name || "",
+        updated_by: creatorUid,
         created_at: isNew
           ? new Date().toISOString()
-          : popis.find((p) => p.id === targetId)?.created_at ||
-            new Date().toISOString(),
+          : existing?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
         approved_at: null,
         archived_at: null,
@@ -585,7 +599,7 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         },
         note: isNew
           ? "Criação do rascunho de mapeamento."
-          : "Alteração manual dos dados das 16 perguntas.",
+          : "Alteração manual dos dados das 17 perguntas.",
         created_at: new Date().toISOString(),
       };
 
@@ -694,8 +708,41 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
       const popiInput = inputs[id];
       if (!popiObj || !popiInput) return;
 
+      // Classificação automática antes da geração (usa o resultado direto no prompt).
+      const classData = await suggestPopiCategories({
+        inputs: popiInput,
+        customPrompt: customPrompts["suggest-categories"],
+      });
+
+      const classObj: POPIClassification = {
+        id: `class-${id}-${Date.now()}`,
+        popi_id: id,
+        routine_category: classData.categoria_rotina,
+        routine_category_justification: classData.justificativa_categoria_rotina,
+        improvement_categories: classData.categorias_melhoria,
+        confidence_level: classData.nivel_confianca,
+        classification_gaps: classData.lacunas_para_classificacao,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const classifiedPopi: POPI = {
+        ...popiObj,
+        routine_category: classData.categoria_rotina,
+        improvement_categories: classData.categorias_melhoria.map((m) => m.category),
+        updated_at: new Date().toISOString(),
+      };
+
+      setClassifications((prev) => ({ ...prev, [id]: classObj }));
+      setPopis((prev) => prev.map((p) => (p.id === id ? classifiedPopi : p)));
+
+      if (currentUser) {
+        await savePOPIToFirestore(classifiedPopi);
+        await savePOPIClassificationToFirestore(id, classObj);
+      }
+
       const data = await generatePopiDocumentDeduped({
-        popi: popiObj,
+        popi: classifiedPopi,
         inputs: popiInput,
         customPrompt: customPrompts["generate-popi"],
       });
@@ -704,7 +751,7 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
       setDocuments((prev) => ({ ...prev, [id]: docObj }));
 
       const updatedPopi = {
-        ...popiObj,
+        ...classifiedPopi,
         status: "gerado" as const,
         updated_at: new Date().toISOString(),
       };
@@ -717,14 +764,14 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         changed_by: "Serviço IA",
         change_type: "ai",
         status_at_change: "gerado",
-        changed_fields: ["document"],
+        changed_fields: ["document", "classification"],
         snapshot: {
           popi: updatedPopi,
           input: popiInput,
           document: docObj,
-          classification: classifications[id] || null,
+          classification: classObj,
         },
-        note: "Geração e indexação completa conduzida pelo robô de IA.",
+        note: "Classificação automática e geração completa conduzidas pelo robô de IA.",
         created_at: new Date().toISOString(),
       };
 
@@ -739,7 +786,7 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         await savePOPIVersionToFirestore(id, newVersion);
       }
     },
-    [popis, inputs, customPrompts, versions, classifications, currentUser]
+    [popis, inputs, customPrompts, versions, currentUser]
   );
 
   const handleRunQAInspection = useCallback(

@@ -38,7 +38,7 @@ export default function PopiForm({
   const [division, setDivision] = useState(activePopi?.division || "");
   const [title, setTitle] = useState(activePopi?.title || "");
 
-  // Input states (16 Questions)
+  // Input states (17 Questions)
   const [roleOrPosition, setRoleOrPosition] = useState(initialInputs?.role_or_position || "");
   const [goal, setGoal] = useState(initialInputs?.routine_goal || "");
   const [routineType, setRoutineType] = useState(initialInputs?.routine_type || "Rotina interna");
@@ -63,11 +63,14 @@ export default function PopiForm({
   const [informacoesIndispensaveis, setInformacoesIndispensaveis] = useState(initialInputs?.informacoes_indispensaveis || "");
   const [tempoMedio, setTempoMedio] = useState(initialInputs?.tempo_medio || "15 a 30 minutos");
 
-  // Q14, Q15, Q16
+  // Q14, Q15, Q16, Q17
   const [gargalos, setGargalos] = useState(initialInputs?.gargalos_dificuldades || "");
   const [melhorias, setMelhorias] = useState(initialInputs?.melhorias_automacoes_sugeridas || "");
   const [metasIndicadores, setMetasIndicadores] = useState<MetaIndicador[]>(initialInputs?.metas_indicadores || []);
   const [metasIndicadoresFree, setMetasIndicadoresFree] = useState(initialInputs?.metas_indicadores_free || "");
+  const [comprovantesGeradosArmazenamento, setComprovantesGeradosArmazenamento] = useState(
+    initialInputs?.comprovantes_gerados_armazenamento || ""
+  );
 
   // Populate metadata from mock if editing edit
   React.useEffect(() => {
@@ -92,6 +95,7 @@ export default function PopiForm({
       setMelhorias(initialInputs.melhorias_automacoes_sugeridas);
       setMetasIndicadores(initialInputs.metas_indicadores);
       setMetasIndicadoresFree(initialInputs.metas_indicadores_free);
+      setComprovantesGeradosArmazenamento(initialInputs.comprovantes_gerados_armazenamento || "");
     }
     if (activePopi) {
       setSecretariaId(activePopi.secretaria_id);
@@ -162,15 +166,11 @@ export default function PopiForm({
     participantsFree.trim().length > 0 ||
     participants.some((p) => p.setor_ou_funcao.trim() && p.responsabilidade.trim());
 
+  // Aceita texto corrido OU ao menos uma etapa com atividade identificada
+  // (importação pode deixar demais campos vazios sem bloquear o avanço).
   const hasFilledPassoAPasso = () =>
     passoAPassoFree.trim().length > 0 ||
-    passoAPasso.some(
-      (s) =>
-        s.atividade.trim() &&
-        s.responsavel.trim() &&
-        s.sistema_ou_documento.trim() &&
-        s.resultado_da_etapa.trim()
-    );
+    passoAPasso.some((s) => s.atividade.trim().length > 0);
 
   const hasFilledMetas = () =>
     metasIndicadoresFree.trim().length > 0 ||
@@ -216,7 +216,7 @@ export default function PopiForm({
 
     if (block === 4) {
       if (!hasFilledPassoAPasso()) {
-        return "Descreva o passo a passo da rotina (texto livre ou etapas estruturadas completas).";
+        return "Descreva o passo a passo da rotina (descrição em texto corrido OU estrutura em etapas).";
       }
       if (!sistemasDocumentos.trim()) {
         return "Informe os sistemas, planilhas ou documentos utilizados.";
@@ -232,6 +232,9 @@ export default function PopiForm({
       if (!melhorias.trim()) return "Descreva o que poderia ser automatizado ou melhorado.";
       if (!hasFilledMetas()) {
         return "Informe metas ou indicadores (texto livre ou tabela estruturada completa).";
+      }
+      if (!comprovantesGeradosArmazenamento.trim()) {
+        return "Informe os documentos, relatórios ou comprovantes gerados e onde ficam salvos.";
       }
     }
 
@@ -287,6 +290,7 @@ export default function PopiForm({
       melhorias_automacoes_sugeridas: melhorias,
       metas_indicadores: metasIndicadores,
       metas_indicadores_free: metasIndicadoresFree,
+      comprovantes_gerados_armazenamento: comprovantesGeradosArmazenamento,
       additional_notes: null,
     };
 
@@ -703,11 +707,17 @@ export default function PopiForm({
                     10. Descreva o passo a passo ordenado da rotina <span className="text-red-500">*</span>
                   </label>
                 </div>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  Preencha <span className="font-semibold">uma</span> das opções abaixo: descrição em texto corrido{" "}
+                  <span className="font-bold text-slate-600">OU</span> estrutura em etapas.
+                </p>
 
                 <div className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50 p-4">
                   <div className="space-y-4">
                     <div>
-                      <p className="text-xs text-slate-500 font-medium mb-2">Descreva a sequência em forma livre:</p>
+                      <p className="text-xs text-slate-500 font-medium mb-2">
+                        Descrição em texto corrido:
+                      </p>
                       <textarea
                         rows={4}
                         placeholder="Ex: Etapa 1: Exportamos o relatório. Etapa 2: Validamos cada dotação orçamentária. Se estiver OK, publicamos no portal, caso contrário devolvemos."
@@ -717,9 +727,17 @@ export default function PopiForm({
                       />
                     </div>
 
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 border-t border-slate-200" />
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        Ou estrutura em etapas
+                      </span>
+                      <div className="flex-1 border-t border-slate-200" />
+                    </div>
+
                     <div>
                       <div className="flex justify-between items-center mb-2">
-                        <p className="text-xs text-slate-500 font-medium font-bold">Visualização Estruturada em Etapas:</p>
+                        <p className="text-xs text-slate-500 font-medium font-bold">Estrutura em etapas:</p>
                         <button
                           type="button"
                           onClick={addStepRow}
@@ -731,7 +749,8 @@ export default function PopiForm({
 
                       {passoAPasso.length === 0 ? (
                         <div className="text-center py-6 text-xs text-slate-400 bg-white rounded-lg border border-dashed border-slate-200">
-                          Nenhuma etapa estruturada ainda. Descreva a sequência no texto livre acima ou clique em "Adicionar Etapa" para preencher manualmente.
+                          Nenhuma etapa estruturada ainda. Use o texto corrido acima{" "}
+                          <span className="font-semibold">ou</span> clique em &quot;Adicionar Etapa&quot;.
                         </div>
                       ) : (
                         <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
@@ -967,6 +986,20 @@ export default function PopiForm({
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  17. Como forma de comprovar que essa rotina foi executada, quais documentos, relatórios ou comprovantes são gerados e onde eles ficam salvos? <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  placeholder="Ex: Relatório diário de ocupação salvo na pasta compartilhada do setor e no sistema Agenda Saúde; protocolo gerado no 1Doc."
+                  value={comprovantesGeradosArmazenamento}
+                  onChange={(e) => setComprovantesGeradosArmazenamento(e.target.value)}
+                  rows={3}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 focus:bg-white"
+                  required
+                />
               </div>
             </div>
           </div>

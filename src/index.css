@@ -176,3 +176,182 @@
   border-radius: 0 0.5rem 0.5rem 0;
 }
 
+/* ——— Editor rich text (TipTap) ——— */
+.rme-shell .ProseMirror {
+  outline: none;
+}
+
+.rme-prose {
+  color: #334155;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  max-width: 52rem;
+}
+
+.rme-prose > * + * {
+  margin-top: 0.55rem;
+}
+
+.rme-prose h1 {
+  color: #0f172a;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 1.5rem 0 0.75rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.rme-prose h1:first-child {
+  margin-top: 0;
+}
+
+.rme-prose h2 {
+  color: #1e293b;
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin: 1.35rem 0 0.55rem;
+  padding-left: 0.65rem;
+  border-left: 3px solid #3b82f6;
+}
+
+.rme-prose h3 {
+  color: #1e40af;
+  font-size: 0.98rem;
+  font-weight: 800;
+  margin: 1.1rem 0 0.45rem;
+}
+
+.rme-prose h4 {
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0.9rem 0 0.35rem;
+}
+
+.rme-prose p {
+  margin: 0.45rem 0;
+  color: #475569;
+}
+
+.rme-prose strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.rme-prose em {
+  font-style: italic;
+  color: #64748b;
+}
+
+.rme-prose u {
+  text-decoration: underline;
+}
+
+.rme-prose ul {
+  list-style: disc;
+  margin: 0.55rem 0 0.75rem;
+  padding-left: 1.35rem;
+}
+
+.rme-prose ol {
+  list-style: decimal;
+  margin: 0.55rem 0 0.75rem;
+  padding-left: 1.35rem;
+}
+
+.rme-prose li {
+  margin: 0.25rem 0;
+  color: #475569;
+}
+
+.rme-prose li::marker {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.rme-prose blockquote {
+  margin: 0.75rem 0;
+  padding: 0.55rem 0.9rem;
+  border-left: 3px solid #93c5fd;
+  background: #f8fafc;
+  color: #64748b;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.rme-prose hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 1.25rem 0;
+}
+
+.rme-prose pre {
+  margin: 0.75rem 0;
+  padding: 0.85rem 1rem;
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.rme-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.rme-prose :not(pre) > code {
+  background: #f1f5f9;
+  color: #1e40af;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  border: 1px solid #e2e8f0;
+}
+
+.rme-prose .tableWrapper,
+.rme-prose .rme-table {
+  margin: 0.85rem 0 1.1rem;
+  overflow-x: auto;
+}
+
+.rme-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.rme-prose th {
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e2e8f0;
+}
+
+.rme-prose td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  vertical-align: top;
+  min-width: 4rem;
+}
+
+.rme-prose .selectedCell {
+  background: #dbeafe;
+}
+
+.rme-prose p.is-editor-empty:first-child::before {
+  color: #94a3b8;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+
