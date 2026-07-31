@@ -97,6 +97,7 @@ counters
   "bottlenecks": "Exportação de listas, controles paralelos e subida de listas no sistema.",
   "improvement_ideas": "Integração por APIs, atualização do E-SAMS e automações.",
   "indicators": "Ocupação mínima de 95% das vagas, entre outros.",
+  "comprovantes_gerados_armazenamento": "Relatório diário de ocupação salvo na pasta compartilhada da Central e no sistema Agenda Saúde.",
   "additional_notes": null,
   "created_at": "2026-06-07T00:00:00Z",
   "updated_at": "2026-06-07T00:00:00Z"

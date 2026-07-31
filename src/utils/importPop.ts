@@ -84,6 +84,8 @@ export function normalizeImportedInputs(
       ? inputs.metas_indicadores
       : [],
     metas_indicadores_free: inputs.metas_indicadores_free || "",
+    comprovantes_gerados_armazenamento:
+      inputs.comprovantes_gerados_armazenamento || "",
     additional_notes: null,
   };
 }
@@ -139,6 +141,7 @@ export function getGapBlock(field: string): number {
     melhorias_automacoes_sugeridas: 5,
     metas_indicadores: 5,
     metas_indicadores_free: 5,
+    comprovantes_gerados_armazenamento: 5,
   };
   return blocks[normalizedField] || 1;
 }

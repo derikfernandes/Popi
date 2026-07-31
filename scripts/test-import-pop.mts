@@ -30,6 +30,7 @@ const normalized = normalizeImportedInputs({
   melhorias_automacoes_sugeridas: "",
   metas_indicadores: [],
   metas_indicadores_free: "",
+  comprovantes_gerados_armazenamento: "",
 });
 
 assert("preserva nome extraído", normalized.routine_name === "Atendimento de solicitações");

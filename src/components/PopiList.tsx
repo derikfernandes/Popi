@@ -359,7 +359,7 @@ function PopiList({
               <strong className="block text-slate-800 text-sm font-extrabold mt-1">
                 {popiToDelete.title} ({popiToDelete.report_number})
               </strong>
-              Esta ação irá apagar todas as respostas das 16 perguntas, o documento
+              Esta ação irá apagar todas as respostas das 17 perguntas, o documento
               gerado de POP e Relatório TO-BE, bem como o histórico completo de
               versionamento deste registro municipal.
             </p>

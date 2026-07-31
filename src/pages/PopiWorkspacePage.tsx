@@ -28,6 +28,7 @@ const EMPTY_INPUT: POPIInput = {
   melhorias_automacoes_sugeridas: "",
   metas_indicadores: [],
   metas_indicadores_free: "",
+  comprovantes_gerados_armazenamento: "",
   additional_notes: null,
 };
 

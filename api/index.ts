@@ -69,8 +69,9 @@ Regras obrigatórias:
 8. Crie uma lacuna para cada assunto relevante do questionário que não tenha sido localizado.
 9. Para participantes, passo a passo e metas/indicadores, registre uma única lacuna no campo principal; não duplique a lacuna no respectivo campo de texto livre.
 10. Em "gaps.field", use somente o nome direto do campo, sem prefixos como "inputs." ou "meta.".
-11. O nível de confiança deve ser "baixo", "médio" ou "alto".
-12. Retorne somente o JSON solicitado pelo schema.`;
+11. Extraia para "comprovantes_gerados_armazenamento" documentos, relatórios ou comprovantes gerados e onde ficam salvos; se não houver, string vazia e lacuna.
+12. O nível de confiança deve ser "baixo", "médio" ou "alto".
+13. Retorne somente o JSON solicitado pelo schema.`;
 }
 
 const importPopResponseSchema = {
@@ -156,6 +157,7 @@ const importPopResponseSchema = {
           },
         },
         metas_indicadores_free: { type: Type.STRING },
+        comprovantes_gerados_armazenamento: { type: Type.STRING },
       },
       required: [
         "role_or_position",
@@ -178,6 +180,7 @@ const importPopResponseSchema = {
         "melhorias_automacoes_sugeridas",
         "metas_indicadores",
         "metas_indicadores_free",
+        "comprovantes_gerados_armazenamento",
       ],
     },
     gaps: {
@@ -313,6 +316,18 @@ async function callVertexAI(
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (text === undefined) {
     throw new Error("Resposta do Vertex AI não conteve texto válido nos parts.");
+  }
+
+  const usage = data.usageMetadata;
+  if (usage) {
+    console.log(
+      `[Vertex AI tokens] model=${model} prompt=${usage.promptTokenCount ?? "?"} ` +
+        `candidates=${usage.candidatesTokenCount ?? "?"} ` +
+        `thoughts=${usage.thoughtsTokenCount ?? "?"} ` +
+        `total=${usage.totalTokenCount ?? "?"}`
+    );
+  } else {
+    console.warn(`[Vertex AI tokens] model=${model} — usageMetadata ausente na resposta`);
   }
 
   return { text };
@@ -581,16 +596,34 @@ app.post("/api/generate-popi", async (req, res) => {
       return res.status(400).json({ error: "POPI e inputs são obrigatórios" });
     }
 
+    const roleOrPosition =
+      inputs.role_or_position || inputs.cargo_funcao || "Não informado";
+    const secretariaDepartamentoDivisao =
+      inputs.secretaria_departamento_divisao ||
+      [
+        popi.secretaria_name,
+        popi.department || "Não informado",
+        popi.division || "Não informado",
+      ].join(" / ");
+    const createdByLogin =
+      popi.created_by_email || popi.created_by_login || "Não informado";
+    const createdByName =
+      popi.created_by_name || createdByLogin || "Não informado";
+    const elaboradoPor =
+      createdByLogin !== "Não informado" && createdByName !== createdByLogin
+        ? `${createdByName} (${createdByLogin})`
+        : createdByName;
+
     const prompt = `
 Você é um especialista sênior em gestão pública, controle interno, mapeamento de processos, de Procedimento Operacional Padrão, análise AS-IS/TO-BE, desenho de fluxos, melhoria contínua e automação aplicada ao setor público.
 
-Sua tarefa é gerar um POPI — Procedimento Operativo Padrão Inteligente — a partir de 16 respostas preenchidas pelo usuário no sistema.
+Sua tarefa é gerar um POPI — Procedimento Operativo Padrão Inteligente — a partir de 17 respostas preenchidas pelo usuário no sistema.
 
 O resultado deve ter qualidade equivalente a dois documentos técnicos:
 1. POP AS-IS — Procedimento Operacional Padrão da rotina atual.
 2. Relatório TO-BE — Análise de gargalos e propostas de melhoria.
 
-O sistema deve usar SOMENTE as 16 perguntas de entrada. Não solicite nem dependa de perguntas adicionais.
+O sistema deve usar SOMENTE as 17 perguntas de entrada. Não solicite nem dependa de perguntas adicionais.
 Se faltar informação, registre como lacuna. Não invente.
 
 DADOS DE CONTROLE DO RELATÓRIO:
@@ -601,13 +634,14 @@ Divisão: ${popi.division || "Não informado"}
 Ano: ${popi.year}
 Categoria da rotina: ${popi.routine_category || "Não informado"}
 Categorias de melhoria: ${(popi.improvement_categories || []).join(", ")}
+Elaborado por: ${elaboradoPor}
 
-RESPOSTAS DO USUÁRIO — 16 PERGUNTAS:
+RESPOSTAS DO USUÁRIO — 17 PERGUNTAS:
 1. Secretaria / Departamento / Divisão:
-${inputs.secretaria_departamento_divisao || "Não informado"}
+${secretariaDepartamentoDivisao}
 
 2. Cargo ou função:
-${inputs.cargo_funcao || "Não informado"}
+${roleOrPosition}
 
 3. Nome da rotina:
 ${inputs.routine_name || "Não informado"}
@@ -651,11 +685,14 @@ ${inputs.melhorias_automacoes_sugeridas || "Não informado"}
 16. Essa rotina tem metas ou indicadores?
 ${inputs.metas_indicadores_free ? inputs.metas_indicadores_free : JSON.stringify(inputs.metas_indicadores || [])}
 
+17. Como forma de comprovar que essa rotina foi executada, quais documentos, relatórios ou comprovantes são gerados e onde eles ficam salvos?
+${inputs.comprovantes_gerados_armazenamento || "Não informado"}
+
 
 REGRAS OBRIGATÓRIAS:
-1. Use exclusivamente as 16 respostas acima e os dados de controle do relatório.
+1. Use exclusivamente as 17 respostas acima e os dados de controle do relatório.
 2. Não invente informações fictícias. Se algo essencial faltar, registre como "não informado" ou lance como lacuna para posterior entrevista ou validação.
-3. Não cite nomes de pessoas físicas ou servidores específicos. Prefira cargos, funções ou secretarias.
+3. Não cite nomes de pessoas físicas ou servidores específicos no corpo do procedimento. Prefira cargos, funções ou secretarias. A linha "Elaborado por" da identificação pode usar o login/nome do usuário do sistema.
 4. Escreva com linguagem profissional, objetiva e adequada a governos.
 5. Gere um fluxograma AS-IS em Mermaid de forma obrigatória usando flowchart TD (seção 7 da PARTE 1).
 6. Gere DOIS fluxogramas TO-BE em Mermaid usando flowchart TD, em seções separadas da PARTE 2:
@@ -664,6 +701,7 @@ REGRAS OBRIGATÓRIAS:
    Se não houver informação suficiente para algum dos dois, escreva "Sem alterações sugeridas para este cenário." na seção correspondente e NÃO inclua o bloco mermaid dessa seção.
 7. Em nós Mermaid, se o texto contiver parênteses, vírgulas, dois-pontos ou aspas, SEMPRE use aspas duplas no rótulo. Exemplo correto: A["Vaga também no SIRESP (CROSS)"]. Exemplo incorreto: A[Vaga também no SIRESP (CROSS)].
 8. Respeite perfeitamente a estrutura obrigatória definida abaixo.
+9. Na seção 8 — Controle de registros, use prioritariamente a pergunta 17 (comprovantes gerados e local de salvamento), complementarmente às perguntas 10, 11, 12 e 16.
 
 ESTRUTURA OBRIGATÓRIA DA SAÍDA:
 
@@ -674,7 +712,8 @@ ESTRUTURA OBRIGATÓRIA DA SAÍDA:
 | **Número do Relatório:** | ${popi.report_number} |
 | **Nome da Rotina de Trabalho:** | ${inputs.routine_name || "Não informado"} |
 | **Secretaria / Departamento / Divisão:** | ${popi.secretaria_name} / ${popi.department} / ${popi.division} |
-| **Responsável pela Rotina:** | ${inputs.cargo_funcao || "Não informado"} |
+| **Responsável pela Rotina:** | ${roleOrPosition} |
+| **Elaborado por:** | ${elaboradoPor} |
 | **Ano:** | ${popi.year} |
 | **Categoria da Rotina:** | ${popi.routine_category || "Não informado"} |
 
@@ -717,7 +756,7 @@ flowchart TD
 \`\`\`
 
 ## 8 — Controle de registros
-[Tabela com os registros e status técnicos]
+[Tabela com os registros e status técnicos. Use prioritariamente a pergunta 17; complemente com 10, 11, 12 e 16. Quando faltar armazenamento, proteção, retenção ou disposição, use "não informado".]
 
 ## 9 — Controle de revisões
 | Data da Revisão | Número da Revisão | Melhoria Implementada |
@@ -795,8 +834,14 @@ flowchart TD
         year: popi.year,
         routine_category: popi.routine_category || "Não informado",
         improvement_categories: (popi.improvement_categories || []).join(", "),
-        "inputs.secretaria_departamento_divisao": inputs.secretaria_departamento_divisao || "Não informado",
-        "inputs.cargo_funcao": inputs.cargo_funcao || "Não informado",
+        created_by_login: createdByLogin,
+        created_by_name: createdByName,
+        elaborado_por: elaboradoPor,
+        // Alias legado + campo atual (prompts antigos no Firestore)
+        "inputs.secretaria_departamento_divisao": secretariaDepartamentoDivisao,
+        "inputs.cargo_funcao": roleOrPosition,
+        "inputs.role_or_position": roleOrPosition,
+        "inputs.routine_name": inputs.routine_name || "Não informado",
         "inputs.routine_goal": inputs.routine_goal || "Não informado",
         "inputs.routine_type": inputs.routine_type || "Não informado",
         "inputs.routine_type_detail": inputs.routine_type_detail || "Nenhum",
@@ -812,6 +857,7 @@ flowchart TD
         "inputs.gargalos_dificuldades": inputs.gargalos_dificuldades || "Não informado",
         "inputs.melhorias_automacoes_sugeridas": inputs.melhorias_automacoes_sugeridas || "Não informado",
         "inputs.metas_indicadores": inputs.metas_indicadores_free ? inputs.metas_indicadores_free : JSON.stringify(inputs.metas_indicadores || []),
+        "inputs.comprovantes_gerados_armazenamento": inputs.comprovantes_gerados_armazenamento || "Não informado",
         current_date: new Date().toLocaleDateString("pt-BR")
       };
       activePrompt = renderPrompt(customPrompt, variables);

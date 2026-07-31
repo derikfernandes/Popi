@@ -8,7 +8,7 @@ O sistema **não terá integração com Google Forms**. As perguntas abaixo fora
 
 Regra de produto:
 
-> O formulário inicial do usuário deve conter somente 16 perguntas. Nenhuma pergunta adicional deve ser criada no fluxo principal de preenchimento.
+> O formulário inicial do usuário deve conter somente 17 perguntas. Nenhuma pergunta adicional deve ser criada no fluxo principal de preenchimento.
 
 ## 2. Instruções exibidas ao usuário
 
@@ -175,9 +175,16 @@ Formato recomendado no sistema:
 | Indicador | Meta | Forma de medição | Fonte de dados | Periodicidade |
 |---|---|---|---|---|
 
+### 17. Como forma de comprovar que essa rotina foi executada, quais documentos, relatórios ou comprovantes são gerados e onde eles ficam salvos?
+
+- **Tipo:** texto longo
+- **Obrigatório:** sim
+- **Campo técnico:** `comprovantes_gerados_armazenamento`
+- **Ajuda:** informe documentos, relatórios ou comprovantes gerados pela rotina e onde ficam salvos (ex.: relatório, protocolo, planilha, pasta compartilhada, sistema).
+
 ## 8. Campos de controle do sistema
 
-Estes campos não são perguntas do usuário e não entram na contagem das 16 perguntas.
+Estes campos não são perguntas do usuário e não entram na contagem das 17 perguntas.
 
 | Campo | Descrição |
 |---|---|
@@ -190,11 +197,12 @@ Estes campos não são perguntas do usuário e não entram na contagem das 16 pe
 
 ## 9. Critérios de aceite do formulário
 
-- [ ] O formulário inicial possui exatamente 16 perguntas.
-- [ ] Todas as 16 perguntas originais estão representadas como campos do sistema.
+- [ ] O formulário inicial possui exatamente 17 perguntas.
+- [ ] Todas as 17 perguntas do roteiro estão representadas como campos do sistema.
 - [ ] O sistema não depende de Google Forms.
 - [ ] O usuário consegue salvar rascunho com campos incompletos.
 - [ ] O usuário consegue editar qualquer campo a qualquer momento.
 - [ ] O passo a passo da pergunta 10 fornece a base para gerar o fluxograma.
 - [ ] O sistema não cria perguntas adicionais para entradas, saídas, decisões ou exceções.
-- [ ] Decisões e exceções devem ser extraídas do texto informado nas 16 perguntas, especialmente das perguntas 10, 14 e 15.
+- [ ] Decisões e exceções devem ser extraídas do texto informado nas 17 perguntas, especialmente das perguntas 10, 14 e 15.
+- [ ] A pergunta 17 alimenta o controle de registros (comprovantes gerados e local de salvamento).
