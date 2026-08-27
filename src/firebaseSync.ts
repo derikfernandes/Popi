@@ -393,7 +393,9 @@ export async function loadGlobalPromptsFromFirestore(): Promise<Record<string, s
     return Object.keys(prompts).length > 0 ? prompts : null;
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
-    return null;
+    // Propaga para o caller não confundir falha de rede com "documento vazio"
+    // (senão admin pode re-semear defaults e apagar prompts válidos).
+    throw error;
   }
 }
 

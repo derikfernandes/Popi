@@ -12,11 +12,13 @@ export default function PromptsPage() {
     setCustomPrompts,
     ensurePromptsLoaded,
     promptsReady,
+    currentUser,
+    userProfile,
   } = usePopiData();
 
   useEffect(() => {
     void ensurePromptsLoaded();
-  }, [ensurePromptsLoaded]);
+  }, [ensurePromptsLoaded, currentUser, userProfile, promptsReady]);
 
   if (!promptsReady) {
     return <PageLoading label="Carregando instruções de IA..." />;
