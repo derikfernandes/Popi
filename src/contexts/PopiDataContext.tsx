@@ -292,9 +292,134 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
   const [promptsReady, setPromptsReady] = useState(false);
   const loadedDetailsRef = useRef(new Set<string>());
-  const promptsLoadStartedRef = useRef(false);
+  const promptsLoadGenRef = useRef(0);
+  const promptsReadyRef = useRef(false);
+  const promptsHydrateInflightRef = useRef<Promise<void> | null>(null);
+  const currentUserRef = useRef(currentUser);
+  const userProfileRef = useRef(userProfile);
+  const customPromptsRef = useRef(customPrompts);
+  currentUserRef.current = currentUser;
+  userProfileRef.current = userProfile;
+  customPromptsRef.current = customPrompts;
 
   const isAdmin = isAdminProfile(userProfile);
+
+  const persistPromptsLocally = useCallback((prompts: Record<string, string>) => {
+    cacheSet(PROMPTS_CACHE_KEY, prompts, PROMPTS_TTL_MS);
+    try {
+      localStorage.setItem("popi_custom_prompts", JSON.stringify(prompts));
+    } catch {
+      // quota / private mode
+    }
+  }, []);
+
+  const readLocalPromptsFallback = useCallback((): Record<string, string> => {
+    const cached = cacheGet<Record<string, string>>(PROMPTS_CACHE_KEY);
+    if (cached) return mergeDefaultPrompts(cached);
+    try {
+      const raw = localStorage.getItem("popi_custom_prompts");
+      if (raw) {
+        return mergeDefaultPrompts(JSON.parse(raw) as Record<string, string>);
+      }
+    } catch {
+      // ignore
+    }
+    return buildDefaultPromptsMap();
+  }, []);
+
+  /** Fonte da verdade = Firestore. Nunca bloqueia a UI em writes. */
+  const hydratePromptsFromCloud = useCallback(
+    async (user: User, profile: UserProfile, loadGen: number) => {
+      if (
+        promptsHydrateInflightRef.current &&
+        loadGen === promptsLoadGenRef.current
+      ) {
+        await promptsHydrateInflightRef.current;
+        return;
+      }
+
+      const run = (async () => {
+        try {
+          const cloudPrompts = await Promise.race([
+            loadGlobalPromptsFromFirestore(),
+            new Promise<null>((_, reject) =>
+              setTimeout(
+                () => reject(new Error("Timeout ao carregar prompts")),
+                15000
+              )
+            ),
+          ]);
+          if (loadGen !== promptsLoadGenRef.current) return;
+
+          if (cloudPrompts) {
+            const merged = mergeDefaultPrompts(cloudPrompts);
+            setCustomPrompts(merged);
+            customPromptsRef.current = merged;
+            persistPromptsLocally(merged);
+            if (
+              profile.role === "admin" &&
+              Object.keys(merged).length !== Object.keys(cloudPrompts).length
+            ) {
+              void saveGlobalPromptsToFirestore(merged, user.uid).catch((err) =>
+                console.error(err)
+              );
+            }
+          } else if (profile.role === "admin") {
+            let legacyPrompts: Record<string, string> | null = null;
+            try {
+              legacyPrompts = await Promise.race([
+                loadLegacyUserPromptsFromFirestore(user.uid),
+                new Promise<null>((resolve) =>
+                  setTimeout(() => resolve(null), 5000)
+                ),
+              ]);
+            } catch {
+              legacyPrompts = null;
+            }
+            if (loadGen !== promptsLoadGenRef.current) return;
+            const toSeed = mergeDefaultPrompts(legacyPrompts);
+            setCustomPrompts(toSeed);
+            customPromptsRef.current = toSeed;
+            persistPromptsLocally(toSeed);
+            void saveGlobalPromptsToFirestore(toSeed, user.uid).catch((err) =>
+              console.error(err)
+            );
+          } else {
+            const defaults = buildDefaultPromptsMap();
+            setCustomPrompts(defaults);
+            customPromptsRef.current = defaults;
+            persistPromptsLocally(defaults);
+          }
+        } catch (err) {
+          if (loadGen !== promptsLoadGenRef.current) return;
+          console.error("Erro ao carregar prompts globais:", err);
+          const fallback = readLocalPromptsFallback();
+          setCustomPrompts(fallback);
+          customPromptsRef.current = fallback;
+        } finally {
+          if (loadGen === promptsLoadGenRef.current) {
+            promptsReadyRef.current = true;
+            setPromptsReady(true);
+          }
+        }
+      })();
+
+      promptsHydrateInflightRef.current = run;
+      try {
+        await run;
+      } finally {
+        if (promptsHydrateInflightRef.current === run) {
+          promptsHydrateInflightRef.current = null;
+        }
+      }
+    },
+    [persistPromptsLocally, readLocalPromptsFallback]
+  );
+
+  const hydratePromptsFromCloudRef = useRef(hydratePromptsFromCloud);
+  hydratePromptsFromCloudRef.current = hydratePromptsFromCloud;
+  const readLocalPromptsFallbackRef = useRef(readLocalPromptsFallback);
+  readLocalPromptsFallbackRef.current = readLocalPromptsFallback;
 
   useEffect(() => {
     setFirestoreErrorObserver((_info, friendlyMessage) => {
@@ -315,13 +440,20 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         setCloudError(null);
         setProfileError(null);
         loadedDetailsRef.current.clear();
-        promptsLoadStartedRef.current = false;
+        promptsLoadGenRef.current += 1;
+        const loadGen = promptsLoadGenRef.current;
+        promptsReadyRef.current = false;
         setPromptsReady(false);
+        cacheInvalidate(PROMPTS_CACHE_KEY);
 
         try {
           const profile = await ensureUserProfile(user);
-          if (cancelled) return;
+          if (cancelled || loadGen !== promptsLoadGenRef.current) return;
           setUserProfile(profile);
+
+          // Prompts logo após o perfil — libera a página de admin sem esperar POPIs.
+          await hydratePromptsFromCloudRef.current(user, profile, loadGen);
+          if (cancelled || loadGen !== promptsLoadGenRef.current) return;
 
           if (!profile.active) {
             setCloudSynced(false);
@@ -341,7 +473,7 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
           const cloudSecs = await dedupeAsync("load-secretarias", () =>
             loadSecretariasFromFirestore()
           );
-          if (cancelled) return;
+          if (cancelled || loadGen !== promptsLoadGenRef.current) return;
           if (cloudSecs && cloudSecs.length > 0) {
             setSecretarias(cloudSecs);
             cacheSet(SECRETARIAS_CACHE_KEY, cloudSecs, SECRETARIAS_TTL_MS);
@@ -359,7 +491,7 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
             `load-popis:${profile.uid}:${profile.role}`,
             () => loadPOPIsFromFirestore(popiScope)
           );
-          if (cancelled) return;
+          if (cancelled || loadGen !== promptsLoadGenRef.current) return;
 
           if (cloudPopis && cloudPopis.length > 0) {
             setPopis(cloudPopis);
@@ -377,12 +509,9 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
             setPopis([]);
           }
 
-          // Prompts: mantém localStorage/defaults; nuvem sob demanda
-          setPromptsReady(false);
-
           setCloudSynced(true);
         } catch (err) {
-          if (cancelled) return;
+          if (cancelled || loadGen !== promptsLoadGenRef.current) return;
           console.error("Erro ao sincronizar Firestore ao autenticar:", err);
           const msg =
             err instanceof Error
@@ -393,6 +522,14 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
               ? "Sem permissão para criar/ler seu perfil. Publique as Firestore rules atualizadas (firebase deploy --only firestore:rules) ou verifique se settings/bootstrap.initialized_by é o seu UID."
               : msg
           );
+          // Garante que a tela de prompts não fique presa se o sync falhar após o perfil.
+          if (!promptsReadyRef.current) {
+            const fallback = readLocalPromptsFallbackRef.current();
+            setCustomPrompts(fallback);
+            customPromptsRef.current = fallback;
+            promptsReadyRef.current = true;
+            setPromptsReady(true);
+          }
         } finally {
           if (!cancelled) setSyncingCloud(false);
         }
@@ -401,7 +538,10 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
         setProfileError(null);
         setCloudSynced(false);
         loadedDetailsRef.current.clear();
+        promptsLoadGenRef.current += 1;
+        promptsReadyRef.current = false;
         setPromptsReady(false);
+        cacheInvalidate(PROMPTS_CACHE_KEY);
       }
     });
 
@@ -410,14 +550,6 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
     };
   }, []);
-
-  useEffect(() => {
-    if (!currentUser || !isAdminProfile(userProfile)) return;
-    localStorage.setItem("popi_custom_prompts", JSON.stringify(customPrompts));
-    saveGlobalPromptsToFirestore(customPrompts, currentUser.uid).catch((err) =>
-      console.error(err)
-    );
-  }, [customPrompts, currentUser, userProfile]);
 
   useEffect(() => {
     localStorage.setItem("popi_secretarias", JSON.stringify(secretarias));
@@ -1064,50 +1196,16 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
   );
 
   const ensurePromptsLoaded = useCallback(async () => {
-    if (promptsReady || promptsLoadStartedRef.current) return;
-    promptsLoadStartedRef.current = true;
-
-    const cached = cacheGet<Record<string, string>>(PROMPTS_CACHE_KEY);
-    if (cached) {
-      const merged = mergeDefaultPrompts(cached);
-      setCustomPrompts(merged);
-      cacheSet(PROMPTS_CACHE_KEY, merged, PROMPTS_TTL_MS);
-      setPromptsReady(true);
+    if (promptsReadyRef.current) return;
+    if (promptsHydrateInflightRef.current) {
+      await promptsHydrateInflightRef.current;
       return;
     }
-
-    await dedupeAsync("load-global-prompts", async () => {
-      try {
-        const cloudPrompts = await loadGlobalPromptsFromFirestore();
-        if (cloudPrompts) {
-          const merged = mergeDefaultPrompts(cloudPrompts);
-          setCustomPrompts(merged);
-          cacheSet(PROMPTS_CACHE_KEY, merged, PROMPTS_TTL_MS);
-          if (
-            userProfile?.role === "admin" &&
-            currentUser &&
-            Object.keys(merged).length !== Object.keys(cloudPrompts).length
-          ) {
-            await saveGlobalPromptsToFirestore(merged, currentUser.uid);
-          }
-        } else if (userProfile?.role === "admin" && currentUser) {
-          const legacyPrompts = await loadLegacyUserPromptsFromFirestore(
-            currentUser.uid
-          );
-          const toSeed = mergeDefaultPrompts(legacyPrompts);
-          setCustomPrompts(toSeed);
-          await saveGlobalPromptsToFirestore(toSeed, currentUser.uid);
-          cacheSet(PROMPTS_CACHE_KEY, toSeed, PROMPTS_TTL_MS);
-        } else {
-          const defaults = buildDefaultPromptsMap();
-          setCustomPrompts(defaults);
-          cacheSet(PROMPTS_CACHE_KEY, defaults, PROMPTS_TTL_MS);
-        }
-      } finally {
-        setPromptsReady(true);
-      }
-    });
-  }, [promptsReady, userProfile, currentUser]);
+    const user = currentUserRef.current;
+    const profile = userProfileRef.current;
+    if (!user || !profile) return;
+    await hydratePromptsFromCloud(user, profile, promptsLoadGenRef.current);
+  }, [hydratePromptsFromCloud]);
 
   const runOrphanPurgeOnce = useCallback(async () => {
     if (!isAdminProfile(userProfile)) return;
@@ -1144,13 +1242,20 @@ export function PopiDataProvider({ children }: { children: ReactNode }) {
 
   const updateCustomPrompts = useCallback(
     (action: SetStateAction<Record<string, string>>) => {
-      setCustomPrompts((prev) => {
-        const next = typeof action === "function" ? action(prev) : action;
-        cacheSet(PROMPTS_CACHE_KEY, next, PROMPTS_TTL_MS);
-        return next;
-      });
+      const prev = customPromptsRef.current;
+      const next = typeof action === "function" ? action(prev) : action;
+      customPromptsRef.current = next;
+      setCustomPrompts(next);
+      persistPromptsLocally(next);
+      const user = currentUserRef.current;
+      const profile = userProfileRef.current;
+      if (user && isAdminProfile(profile)) {
+        void saveGlobalPromptsToFirestore(next, user.uid).catch((err) =>
+          console.error(err)
+        );
+      }
     },
-    []
+    [persistPromptsLocally]
   );
 
   const value = useMemo<PopiDataContextValue>(
